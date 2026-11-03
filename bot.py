@@ -245,7 +245,7 @@ async def accion_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard = [[InlineKeyboardButton("Sí, ver resumen", callback_data="ver_resumen_acciones"),
                          InlineKeyboardButton("No", callback_data="no_resumen")]]
             await update.message.reply_text(
-                f"❌ Noo, no tengo registrada esa acción aún.\n¿Quieres ver qué acciones realizaste hoy?",
+                "❌ Noo, no tengo registrada esa acción aún.\n¿Quieres ver qué acciones realizaste hoy?",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
     else:
@@ -283,4 +283,82 @@ async def ver_listas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for cat, items in listas.items():
         texto += f"\n🏷 **{cat.upper()}**\n" + "".join([f"  • {i}\n" for i in items])
     
-    await update.message.reply_text(
+    await update.message.reply_text(texto)
+
+async def tareas(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in user_data_store or not user_data_store[user_id]["tareas"]:
+        await update.message.reply_text("📝 No tenés tareas pendientes.")
+        return
+    t_list = user_data_store[user_id]["tareas"]
+    await update.message.reply_text("📝 **Tus tareas pendientes:**\n\n" + "\n".join([f"• {t}" for t in t_list]))
+
+async def nueva_tarea(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    texto_tarea = " ".join(context.args)
+    if not texto_tarea:
+        await update.message.reply_text("⚠️ Escribí la tarea. Ejemplo: `/nueva_tarea Reunión scout`", parse_mode="Markdown")
+        return
+    if user_id not in user_data_store:
+        user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": []}
+    user_data_store[user_id]["tareas"].append(texto_tarea)
+    await update.message.reply_text(f"➕ **Tarea agregada:** {texto_tarea}")
+
+async def completada(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("✅ Seleccioná o indicá la tarea finalizada.")
+
+# --- MANEJADOR DE BOTONES Y AUDIOS ---
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    if data == "reunion_presencial":
+        await query.edit_message_text("🏢 **Reunión Presencial**\nEscribí los datos usando:\n`/reunion_presencial Título | YYYY-MM-DD | HH:MM | Lugar`", parse_mode="Markdown")
+    elif data == "reunion_virtual":
+        await query.edit_message_text("💻 **Reunión Virtual**\nEscribí los datos usando:\n`/reunion_virtual Título | YYYY-MM-DD | HH:MM | Link`", parse_mode="Markdown")
+    elif data == "ver_resumen_acciones":
+        user_id = query.from_user.id
+        acciones = user_data_store.get(user_id, {}).get("acciones", [])
+        if not acciones:
+            await query.edit_message_text("📋 No hay acciones registradas hoy.")
+            return
+        resumen_str = "\n".join([f"• {a['accion']} (a las {a['hora']})" for a in acciones])
+        await query.edit_message_text(f"📋 **Resumen de tus acciones de hoy:**\n\n{resumen_str}")
+    elif data == "no_resumen":
+        await query.edit_message_text("👍 ¡Entendido!")
+
+async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.voice:
+        await update.message.reply_text("🎤 Recibí tu nota de voz. (Próximamente transcripción automática integrada). Por ahora podés usar los comandos.")
+    elif update.message.text:
+        pass
+
+def main():
+    server_thread = threading.Thread(target=run_web_server, daemon=True)
+    server_thread.start()
+
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    # Registro de comandos
+    app.add_handler(CommandHandler("start", iniciar))
+    app.add_handler(CommandHandler("iniciar", iniciar))
+    app.add_handler(CommandHandler("ayuda", ayuda))
+    app.add_handler(CommandHandler("configuracion", configuracion))
+    app.add_handler(CommandHandler("hora_semana", set_hora_semana))
+    app.add_handler(CommandHandler("hora_finde", set_hora_finde))
+    app.add_handler(CommandHandler("Agenda_reunion", agenda_reunion))
+    app.add_handler(CommandHandler("accion", accion_cmd))
+    app.add_handler(CommandHandler("lista", lista_cmd))
+    app.add_handler(CommandHandler("ver_listas", ver_listas))
+    app.add_handler(CommandHandler("tareas", tareas))
+    app.add_handler(CommandHandler("nueva_tarea", nueva_tarea))
+    app.add_handler(CommandHandler("completada", completada))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.VOICE | filters.TEXT & ~filters.COMMAND, handle_voice_or_text))
+
+    print("🚀 ¡@SoyOrganizabot con soporte de /start y funciones inteligentes listo!")
+    app.run_polling()
+
+if __name__ == '__main__':
+    main()
