@@ -14,16 +14,20 @@ logging.basicConfig(
 # Token configurado directamente
 TOKEN = "9006959123:AAGwA8wE4vhFi8-tv0bUvFAnnLnfyi2ZCXQ"
 
-# --- SERVIDOR WEB FALSO PARA QUE RENDER NO DE ERROR DE PUERTOS ---
+# --- SERVIDOR WEB PARA CUMPLIR CON RENDER ---
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"@SoyOrganizabot esta activo y funcionando!")
+        self.wfile.write(b"@SoyOrganizabot activo y funcionando!")
+    
+    def log_message(self, format, *args):
+        return # Evita saturar los logs con peticiones web
 
 def run_web_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(('0.0.0.0', port), SimpleHandler)
+    print(f"🌐 Servidor web interno corriendo en el puerto {port}")
     server.serve_forever()
 
 # --- COMANDOS DEL BOT ---
@@ -66,7 +70,7 @@ async def nota(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("📌 **Guardar nota:** Mandame el texto de la nota que querés recordar.")
 
 async def lista_notas(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📂 **Tus tus notas:** Acá verás el listado de tus anotaciones recientes.")
+    await update.message.reply_text("📂 **Tus notas:** Acá verás el listado de tus anotaciones recientes.")
 
 async def recordatorio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⏰ **Recordatorio:** Configurá cuándo querés recibir un aviso.")
@@ -75,7 +79,7 @@ async def silencio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔕 **Modo silencio:** Avisos matutinos pospuestos.")
 
 def main():
-    # Arrancar el servidor web falso en un hilo paralelo para cumplir con Render
+    # Arrancar el servidor web falso antes que nada en un hilo separado
     server_thread = threading.Thread(target=run_web_server, daemon=True)
     server_thread.start()
 
@@ -94,7 +98,7 @@ def main():
     app.add_handler(CommandHandler("recordatorio", recordatorio))
     app.add_handler(CommandHandler("silencio", silencio))
 
-    print("🚀 ¡@SoyOrganizabot está listo y funcionando en el Web Service gratuito!")
+    print("🚀 ¡@SoyOrganizabot está listo y funcionando en la nube!")
     app.run_polling()
 
 if __name__ == '__main__':
