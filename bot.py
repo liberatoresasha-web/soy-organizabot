@@ -184,4 +184,103 @@ async def set_hora_finde(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     hora_utc = (hora_target + 3) % 24
     job_name = f"{user_id}_fin"
-    for job in context.job_queue.get_jobs_by_
+    for job in context.job_queue.get_jobs_by_name(job_name):
+        job.schedule_removal()
+
+    context.job_queue.run_daily(
+        enviar_reporte_matutino,
+        time=datetime.time(hour=hora_utc, minute=min_target, second=0),
+        chat_id=chat_id, user_id=user_id, name=job_name
+    )
+    await update.message.reply_text(f"✅ ¡Reporte de Fines de semana programado a las **{nueva_hora} hs**!")
+
+# --- ASISTENTE DE REUNIONES UNIFICADO ---
+async def agenda_reunion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("🏢 Presencial", callback_data="reunion_presencial"),
+         InlineKeyboardButton("💻 Virtual", callback_data="reunion_virtual")]
+    ]
+    await update.message.reply_text(
+        "📅 **Asistente de Reuniones:**\n\n¿Qué tipo de reunión querés agendar?",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+# --- ACCIONES COTIDIANAS ---
+async def accion_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    texto = " ".join(context.args)
+
+    if user_id not in user_data_store:
+        user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": []}
+    
+    acciones_usuario = user_data_store[user_id]["acciones"]
+
+    if not texto:
+        await update.message.reply_text(
+            "⚠️ Indicá la acción. Ejemplo:\n"
+            "`/accion Cerré la puerta de casa` o preguntá por algo.\n"
+            "También podés pedir un resumen escribiendo `/accion resumen`",
+            parse_mode="Markdown"
+        )
+        return
+
+    if texto.lower() == "resumen":
+        if not acciones_usuario:
+            await update.message.reply_text("📋 No tenés acciones registradas todavía en el día.")
+            return
+        resumen_str = "\n".join([f"• {a['accion']} (a las {a['hora']})" for a in acciones_usuario])
+        await update.message.reply_text(f"📋 **Resumen de tus acciones de hoy:**\n\n{resumen_str}")
+        return
+
+    if "?" in texto or texto.lower().startswith("¿") or "hice" in texto.lower() or "cerré" in texto.lower() or "apagué" in texto.lower():
+        encontrada = None
+        for acc in acciones_usuario:
+            if any(palabra in acc["accion"].lower() for palabra in texto.lower().replace("?", "").split() if len(palabra) > 3):
+                encontrada = acc
+                break
+        
+        if encontrada:
+            await update.message.reply_text(f"¡Siii, Sasha! Registré que **{encontrada['accion']}** a las **{encontrada['hora']} hs**.")
+        else:
+            keyboard = [[InlineKeyboardButton("Sí, ver resumen", callback_data="ver_resumen_acciones"),
+                         InlineKeyboardButton("No", callback_data="no_resumen")]]
+            await update.message.reply_text(
+                f"❌ Noo, no tengo registrada esa acción aún.\n¿Quieres ver qué acciones realizaste hoy?",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+    else:
+        hora_actual = datetime.datetime.now().strftime("%H:%M")
+        acciones_usuario.append({"accion": texto, "hora": hora_actual})
+        await update.message.reply_text(f"✅ ¡Acción guardada!\nRegistré: *{texto}* a las *{hora_actual} hs*.", parse_mode="Markdown")
+
+# --- LISTAS (KEEP) Y TAREAS (TASKS) ---
+async def lista_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if len(context.args) < 2:
+        await update.message.reply_text("⚠️ Formato: `/lista [categoría] [texto]`\nEjemplo: `/lista supermercado Pan y leche`", parse_mode="Markdown")
+        return
+    
+    categoria = context.args[0].lower()
+    item = " ".join(context.args[1:])
+
+    if user_id not in user_data_store:
+        user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": []}
+    
+    if categoria not in user_data_store[user_id]["listas"]:
+        user_data_store[user_id]["listas"][categoria] = []
+    
+    user_data_store[user_id]["listas"][categoria].append(item)
+    await update.message.reply_text(f"📌 Agregado a la lista **{categoria.upper()}**: {item}")
+
+async def ver_listas(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in user_data_store or not user_data_store[user_id]["listas"]:
+        await update.message.reply_text("📂 No tenés listas guardadas.")
+        return
+    
+    listas = user_data_store[user_id]["listas"]
+    texto = "📂 **Tus Listas:**\n"
+    for cat, items in listas.items():
+        texto += f"\n🏷 **{cat.upper()}**\n" + "".join([f"  • {i}\n" for i in items])
+    
+    await update.message.reply_text(
