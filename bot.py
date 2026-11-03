@@ -14,7 +14,6 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# Token configurado directamente
 TOKEN = "9006959123:AAGwA8wE4vhFi8-tv0bUvFAnnLnfyi2ZCXQ"
 
 # --- SERVIDOR WEB PARA CUMPLIR CON RENDER ---
@@ -30,13 +29,10 @@ class SimpleHandler(BaseHTTPRequestHandler):
 def run_web_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(('0.0.0.0', port), SimpleHandler)
-    print(f"🌐 Servidor web interno corriendo en el puerto {port}")
     server.serve_forever()
 
-# --- DATOS Y CONFIGURACIONES POR USUARIO ---
 user_data_store = {}
 
-# --- FUNCIÓN PARA OBTENER EL CLIMA DE VILLA REGINA ---
 def obtener_clima_villa_regina():
     try:
         url = "https://api.open-meteo.com/v1/forecast?latitude=-39.07&longitude=-67.08&current=temperature_2m,weather_code"
@@ -49,7 +45,6 @@ def obtener_clima_villa_regina():
         print(f"Error al obtener clima: {e}")
         return "Clima no disponible por el momento"
 
-# --- TAREA PROGRAMADA DEL REPORTE MATUTINO ---
 async def enviar_reporte_matutino(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
     chat_id = job.chat_id
@@ -58,9 +53,7 @@ async def enviar_reporte_matutino(context: ContextTypes.DEFAULT_TYPE):
     if user_id not in user_data_store:
         user_data_store[user_id] = {"tareas": [], "hora_semana": "08:00", "hora_fin_de_semana": "10:00"}
     
-    # Validamos si hoy es fin de semana (Sábado = 5, Domingo = 6)
     hoy_es_finde = datetime.datetime.now().weekday() >= 5
-    
     tareas_pendientes = user_data_store[user_id].get("tareas", [])
     clima = obtener_clima_villa_regina()
 
@@ -94,25 +87,20 @@ async def iniciar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"¡Hola, {user.first_name}! 🤖 Bienvenido a @SoyOrganizabot.\n\n"
-        "Estoy listo para ayudarte a organizar tus tareas y notas. Usá /ayuda para ver las opciones."
+        "Estoy listo para ayudarte. Usá /ayuda para ver las opciones."
     )
 
 async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "📋 **Comandos disponibles en @SoyOrganizabot:**\n\n"
-        "• /iniciar - Iniciar la conversación\n"
-        "• /ayuda - Muestra esta lista\n"
-        "• /configuracion - Ajustar reportes diferenciados\n"
+        "• /configuracion - Ver horarios actuales\n"
+        "• /hora_semana [HH:MM] - Ej: `/hora_semana 07:30`\n"
+        "• /hora_finde [HH:MM] - Ej: `/hora_finde 09:45`\n"
         "• /tareas - Ver pendientes\n"
         "• /nueva_tarea [texto] - Agregar tarea\n"
-        "• /completada - Finalizar tarea\n"
-        "• /nota - Guardar nota\n"
-        "• /lista_notas - Ver notas\n"
-        "• /recordatorio - Programar aviso\n"
-        "• /silencio - Modo silencio"
+        "• /ayuda - Muestra esta lista"
     )
 
-# ⚙️ Comando /configuracion con menú avanzado
 async def configuracion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in user_data_store:
@@ -122,8 +110,8 @@ async def configuracion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     h_fin = user_data_store[user_id]["hora_fin_de_semana"]
 
     keyboard = [
-        [InlineKeyboardButton(f"🏢 Lunes a Viernes ({h_sem})", callback_data="menu_sem")],
-        [InlineKeyboardButton(f"🏡 Finde / Sáb-Dom ({h_fin})", callback_data="menu_fin")]
+        [InlineKeyboardButton(f"🏢 Lunes a Viernes ({h_sem})", callback_data="info_sem")],
+        [InlineKeyboardButton(f"🏡 Finde / Sáb-Dom ({h_fin})", callback_data="info_fin")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -131,93 +119,96 @@ async def configuracion(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "⚙️ **Configuración de Reportes Matutinos:**\n\n"
         f"• Lunes a Viernes: **{h_sem} hs**\n"
         f"• Fines de semana: **{h_fin} hs**\n\n"
-        "Seleccioná qué bloque querés modificar:",
+        "Para cambiar la hora libremente, usá:\n"
+        "👉 `/hora_semana 07:30`\n"
+        "👉 `/hora_finde 09:15`",
         reply_markup=reply_markup
     )
 
-# Manejador de botones interactivos
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
 
-    if data == "menu_sem":
-        # Mostrar opciones de horario para Lunes a Viernes
-        keyboard = [
-            [InlineKeyboardButton("07:00 hs", callback_data="set_sem_07:00"),
-             InlineKeyboardButton("08:00 hs", callback_data="set_sem_08:00")],
-            [InlineKeyboardButton("09:00 hs", callback_data="set_sem_09:00"),
-             InlineKeyboardButton("⬅️ Volver", callback_data="menu_volver")]
-        ]
-        await query.edit_message_text("🏢 Seleccioná la hora para **Lunes a Viernes**:", reply_markup=InlineKeyboardMarkup(keyboard))
+    if data == "info_sem":
+        await query.message.reply_text("Para cambiar Lunes a Viernes a la hora que quieras, escribí por ejemplo:\n`/hora_semana 07:15`", parse_mode="Markdown")
+    elif data == "info_fin":
+        await query.message.reply_text("Para cambiar el fin de semana a la hora que quieras, escribí por ejemplo:\n`/hora_finde 09:30`", parse_mode="Markdown")
 
-    elif data == "menu_fin":
-        # Mostrar opciones de horario para Finde
-        keyboard = [
-            [InlineKeyboardButton("09:00 hs", callback_data="set_fin_09:00"),
-             InlineKeyboardButton("10:00 hs", callback_data="set_fin_10:00")],
-            [InlineKeyboardButton("11:00 hs", callback_data="set_fin_11:00"),
-             InlineKeyboardButton("⬅️ Volver", callback_data="menu_volver")]
-        ]
-        await query.edit_message_text("🏡 Seleccioná la hora para el **Fin de semana**:", reply_markup=InlineKeyboardMarkup(keyboard))
-
-    elif data == "menu_volver":
-        await configuracion_menu_principal(query)
-
-    elif data.startswith("set_sem_") or data.startswith("set_fin_"):
-        user_id = query.from_user.id
-        chat_id = query.message.chat_id
-        
-        tipo, hora_val = data.split("_")[1], data.split("_")[2]
-        
-        if user_id not in user_data_store:
-            user_data_store[user_id] = {"tareas": [], "hora_semana": "08:00", "hora_fin_de_semana": "10:00"}
-
-        if tipo == "sem":
-            user_data_store[user_id]["hora_semana"] = hora_val
-            label = "Lunes a Viernes"
-        else:
-            user_data_store[user_id]["hora_fin_de_semana"] = hora_val
-            label = "Fin de semana"
-
-        # Programamos el trabajo diario en job_queue
-        partes = hora_val.split(":")
-        hora_utc = (int(partes[0]) + 3) % 24
+# Comando libre para configurar Lunes a Viernes
+async def set_hora_semana(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    if not context.args:
+        await update.message.reply_text("⚠️ Escribí la hora en formato HH:MM. Ejemplo: `/hora_semana 07:30`", parse_mode="Markdown")
+        return
+    
+    nueva_hora = context.args[0]
+    try:
+        partes = nueva_hora.split(":")
+        hora_target = int(partes[0])
         min_target = int(partes[1])
+    except:
+        await update.message.reply_text("❌ Formato incorrecto. Usá el formato `HH:MM` (ejemplo: `08:30`).", parse_mode="Markdown")
+        return
 
-        job_name = f"{user_id}_{tipo}"
-        current_jobs = context.job_queue.get_jobs_by_name(job_name)
-        for job in current_jobs:
-            job.schedule_removal()
+    if user_id not in user_data_store:
+        user_data_store[user_id] = {"tareas": [], "hora_semana": "08:00", "hora_fin_de_semana": "10:00"}
+    
+    user_data_store[user_id]["hora_semana"] = nueva_hora
 
-        context.job_queue.run_daily(
-            enviar_reporte_matutino,
-            time=datetime.time(hour=hora_utc, minute=min_target, second=0),
-            chat_id=chat_id,
-            user_id=user_id,
-            name=job_name
-        )
+    # Programar en job_queue
+    hora_utc = (hora_target + 3) % 24
+    job_name = f"{user_id}_sem"
+    for job in context.job_queue.get_jobs_by_name(job_name):
+        job.schedule_removal()
 
-        await query.edit_message_text(
-            text=f"✅ **¡Guardado con éxito!**\n\nEl reporte de **{label}** quedó programado a las **{hora_val} hs**."
-        )
-
-async def configuracion_menu_principal(query):
-    user_id = query.from_user.id
-    h_sem = user_data_store.get(user_id, {}).get("hora_semana", "08:00")
-    h_fin = user_data_store.get(user_id, {}).get("hora_fin_de_semana", "10:00")
-
-    keyboard = [
-        [InlineKeyboardButton(f"🏢 Lunes a Viernes ({h_sem})", callback_data="menu_sem")],
-        [InlineKeyboardButton(f"🏡 Finde / Sáb-Dom ({h_fin})", callback_data="menu_fin")]
-    ]
-    await query.edit_message_text(
-        "⚙️ **Configuración de Reportes Matutinos:**\n\n"
-        f"• Lunes a Viernes: **{h_sem} hs**\n"
-        f"• Fines de semana: **{h_fin} hs**\n\n"
-        "Seleccioná qué bloque querés modificar:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+    context.job_queue.run_daily(
+        enviar_reporte_matutino,
+        time=datetime.time(hour=hora_utc, minute=min_target, second=0),
+        chat_id=chat_id,
+        user_id=user_id,
+        name=job_name
     )
+
+    await update.message.reply_text(f"✅ ¡Listo! El reporte de **Lunes a Viernes** quedó programado exactamente a las **{nueva_hora} hs**.")
+
+# Comando libre para configurar Finde
+async def set_hora_finde(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    if not context.args:
+        await update.message.reply_text("⚠️ Escribí la hora en formato HH:MM. Ejemplo: `/hora_finde 10:30`", parse_mode="Markdown")
+        return
+    
+    nueva_hora = context.args[0]
+    try:
+        partes = nueva_hora.split(":")
+        hora_target = int(partes[0])
+        min_target = int(partes[1])
+    except:
+        await update.message.reply_text("❌ Formato incorrecto. Usá el formato `HH:MM` (ejemplo: `10:00`).", parse_mode="Markdown")
+        return
+
+    if user_id not in user_data_store:
+        user_data_store[user_id] = {"tareas": [], "hora_semana": "08:00", "hora_fin_de_semana": "10:00"}
+    
+    user_data_store[user_id]["hora_fin_de_semana"] = nueva_hora
+
+    hora_utc = (hora_target + 3) % 24
+    job_name = f"{user_id}_fin"
+    for job in context.job_queue.get_jobs_by_name(job_name):
+        job.schedule_removal()
+
+    context.job_queue.run_daily(
+        enviar_reporte_matutino,
+        time=datetime.time(hour=hora_utc, minute=min_target, second=0),
+        chat_id=chat_id,
+        user_id=user_id,
+        name=job_name
+    )
+
+    await update.message.reply_text(f"✅ ¡Listo! El reporte de **Fines de semana** quedó programado exactamente a las **{nueva_hora} hs**.")
 
 # Comandos de tareas
 async def tareas(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -243,21 +234,6 @@ async def nueva_tarea(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data_store[user_id]["tareas"].append(texto_tarea)
     await update.message.reply_text(f"➕ **Tarea agregada:** {texto_tarea}")
 
-async def completada(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Próximamente selector de tareas completadas.")
-
-async def nota(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📌 Mandame el texto de tu nota.")
-
-async def lista_notas(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📂 Tus notas guardadas.")
-
-async def recordatorio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("⏰ Configuración de recordatorios.")
-
-async def silencio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔕 Modo silencio.")
-
 def main():
     server_thread = threading.Thread(target=run_web_server, daemon=True)
     server_thread.start()
@@ -267,16 +243,13 @@ def main():
     app.add_handler(CommandHandler("iniciar", iniciar))
     app.add_handler(CommandHandler("ayuda", ayuda))
     app.add_handler(CommandHandler("configuracion", configuracion))
+    app.add_handler(CommandHandler("hora_semana", set_hora_semana))
+    app.add_handler(CommandHandler("hora_finde", set_hora_finde))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(CommandHandler("tareas", tareas))
     app.add_handler(CommandHandler("nueva_tarea", nueva_tarea))
-    app.add_handler(CommandHandler("completada", completada))
-    app.add_handler(CommandHandler("nota", nota))
-    app.add_handler(CommandHandler("lista_notas", lista_notas))
-    app.add_handler(CommandHandler("recordatorio", recordatorio))
-    app.add_handler(CommandHandler("silencio", silencio))
 
-    print("🚀 ¡@SoyOrganizabot con horarios diferenciados listo!")
+    print("🚀 ¡@SoyOrganizabot con configuración de hora libre listo!")
     app.run_polling()
 
 if __name__ == '__main__':
