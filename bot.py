@@ -1,17 +1,33 @@
+import os
 import logging
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 
-# Configurar logs para ver qué pasa en la consola
+# Configurar logs
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
-# Token directamente configurado para evitar errores
+# Token configurado directamente
 TOKEN = "9006959123:AAGwA8wE4vhFi8-tv0bUvFAnnLnfyi2ZCXQ"
 
-# 1. Comando /iniciar
+# --- SERVIDOR WEB FALSO PARA QUE RENDER NO DE ERROR DE PUERTOS ---
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"@SoyOrganizabot esta activo y funcionando!")
+
+def run_web_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(('0.0.0.0', port), SimpleHandler)
+    server.serve_forever()
+
+# --- COMANDOS DEL BOT ---
+
 async def iniciar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await update.message.reply_text(
@@ -19,7 +35,6 @@ async def iniciar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Estoy listo para ayudarte a organizar tus tareas y notas. Usá /ayuda para ver las opciones."
     )
 
-# 2. Comando /ayuda
 async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "📋 **Comandos disponibles en @SoyOrganizabot:**\n\n"
@@ -35,42 +50,39 @@ async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /silencio - Modo silencio / posponer"
     )
 
-# 3. Comando /configuracion
 async def configuracion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⚙️ **Configuración:** Próximamente podrás ajustar tus preferencias desde acá.")
 
-# 4. Comando /tareas
 async def tareas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("📝 **Tus pendientes:** No tenés tareas registradas por el momento.")
 
-# 5. Comando /nueva_tarea
 async def nueva_tarea(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("➕ **Nueva tarea:** Escribí la tarea que querés agregar (próximamente automático).")
 
-# 6. Comando /completada
 async def completada(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ **Completar tarea:** Seleccioná la tarea que finalizaste.")
 
-# 7. Comando /nota
 async def nota(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("📌 **Guardar nota:** Mandame el texto de la nota que querés recordar.")
 
-# 8. Comando /lista_notas
 async def lista_notas(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📂 **Tus notas:** Acá verás el listado de tus anotaciones recientes.")
+    await update.message.reply_text("📂 **Tus tus notas:** Acá verás el listado de tus anotaciones recientes.")
 
-# 9. Comando /recordatorio
 async def recordatorio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⏰ **Recordatorio:** Configurá cuándo querés recibir un aviso.")
 
-# 10. Comando /silencio
 async def silencio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔕 **Modo silencio:** Avisos matutinos pospuestos.")
 
 def main():
+    # Arrancar el servidor web falso en un hilo paralelo para cumplir con Render
+    server_thread = threading.Thread(target=run_web_server, daemon=True)
+    server_thread.start()
+
+    # Construir la aplicación del bot
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Registro de todos los comandos en el bot
+    # Registro de comandos
     app.add_handler(CommandHandler("iniciar", iniciar))
     app.add_handler(CommandHandler("ayuda", ayuda))
     app.add_handler(CommandHandler("configuracion", configuracion))
@@ -82,7 +94,7 @@ def main():
     app.add_handler(CommandHandler("recordatorio", recordatorio))
     app.add_handler(CommandHandler("silencio", silencio))
 
-    print("🚀 ¡@SoyOrganizabot está listo y funcionando en la nube con todos sus comandos!")
+    print("🚀 ¡@SoyOrganizabot está listo y funcionando en el Web Service gratuito!")
     app.run_polling()
 
 if __name__ == '__main__':
