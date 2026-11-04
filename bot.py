@@ -515,7 +515,7 @@ def run_telegram_bot():
     app.run_polling()
 
 if __name__ == '__main__':
-    # Lanzar el bot de Telegram en hilo secundario para liberar el puerto web principal para Render
+    # Hilo secundario para el bot de Telegram
     bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
     bot_thread.start()
 
