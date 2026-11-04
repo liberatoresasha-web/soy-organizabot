@@ -27,7 +27,6 @@ CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "635273911604-g1s9ce1rgq8stugbjor
 CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "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")
 REDIRECT_URI = "https://soy-organizabot.onrender.com/oauth2callback"
 
-# Scopes ampliados para incluir Calendar, Tasks y Drive/Keep (archivos)
 SCOPES = [
     'https://www.googleapis.com/auth/calendar',
     'https://www.googleapis.com/auth/tasks'
@@ -802,7 +801,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         prompt_texto = "📍 Ingresá la dirección:" if tipo == "Presencial" else "💻 Ingresá el link de la reunión:"
         await query.edit_message_text(prompt_texto)
 
-# --- MANEJADOR DE TEXTO Y AUDIOS ---
+# --- MANEJADOR DE TEXTO Y AUDIOS (Conversacional e Inteligente) ---
 async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     str_id = str(user_id)
@@ -822,16 +821,7 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 os.remove(audio_path)
 
             keyboard = [[InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]]
-            if "tarea" in texto_transcrito.lower():
-                nueva_t = texto_transcrito.lower().replace("tarea", "").strip()
-                if str_id not in user_data_store:
-                    user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": {}, "recordatorios": [], "frecuentes": [], "notas": {}}
-                user_data_store[str_id]["tareas"].append(nueva_t)
-                guardar_datos(user_data_store)
-                agregar_google_task(user_id, nueva_t)
-                await update.message.reply_text(f"➕ Tarea agregada por voz: *{nueva_t}*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
-            else:
-                await update.message.reply_text(f"🎤 *Transcripción:* \"{texto_transcrito}\"", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+            await update.message.reply_text(f"🎤 *Transcripción:* \"{texto_transcrito}\"", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
         except Exception as e:
             if os.path.exists(audio_path):
                 os.remove(audio_path)
@@ -842,6 +832,7 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     text = update.message.text
     hoy_str = ahora_arg.strftime("%Y-%m-%d")
 
+    # Si está en un flujo activo (como crear una nota, tarea, reunión o recordatorio)
     if user_id in user_input_states:
         estado_input = user_input_states[user_id]
         keyboard = [[InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]]
@@ -884,53 +875,6 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 [InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]
             ]
             await update.message.reply_text(f"📌 Nota guardada en **{cat}**: *{text}*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard_nota_ok))
-            return
-
-        elif estado_input == "esperando_accion":
-            del user_input_states[user_id]
-            texto_completo = text.strip()
-            texto_lower = texto_completo.lower()
-            if str_id not in user_data_store:
-                user_data_store[str_id] = {"acciones": {}}
-            if "acciones" not in user_data_store[str_id]:
-                user_data_store[str_id]["acciones"] = {}
-
-            if "?" in texto_completo or "¿" in texto_completo or "cerre" in texto_lower or "revise" in texto_lower or "tomé" in texto_lower or "puse" in texto_lower:
-                clave_accion = texto_lower.replace("?", "").replace("¿", "").replace("el", "").replace("la", "").strip()
-                encontrada = False
-                hora_reg = ""
-                for acc, fecha_hora in user_data_store[str_id]["acciones"].items():
-                    if any(palabra in acc for palabra in clave_accion.split() if len(palabra) > 3):
-                        if fecha_hora.startswith(hoy_str):
-                            encontrada = True
-                            hora_reg = fecha_hora.split(" ")[1]
-                            break
-                
-                if encontrada:
-                    resp = f"Siii, registré '{clave_accion}' hoy a las {hora_reg} hs."
-                else:
-                    resp = f"Nooo, no he registrado esa acción hoy; la última vez no figura en el día de hoy."
-            else:
-                ahora_reg_str = ahora_arg.strftime("%Y-%m-%d %H:%M")
-                user_data_store[str_id]["acciones"][texto_lower] = ahora_reg_str
-                guardar_datos(user_data_store)
-                hora_actual = ahora_arg.strftime("%H:%M")
-                resp = f"Siii, registré '{texto_completo}' hoy a las {hora_actual} hs. ✅"
-
-            await update.message.reply_text(resp, reply_markup=InlineKeyboardMarkup(keyboard))
-            return
-
-        elif estado_input == "esperando_recordatorio":
-            del user_input_states[user_id]
-            recordatorio_temp_state[user_id] = {"texto": text, "step": "frecuencia"}
-            keyboard_freq = [
-                [InlineKeyboardButton("🔄 Todos los días", callback_data="freq_type_Todos los días")],
-                [InlineKeyboardButton("📅 Lunes a Viernes", callback_data="freq_type_Lunes a Viernes")],
-                [InlineKeyboardButton("📌 Una sola vez", callback_data="freq_type_Única vez")],
-                [InlineKeyboardButton("⬅️ Volver", callback_data="menu_recordatorios")],
-                [InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]
-            ]
-            await update.message.reply_text("🔄 Seleccioná la frecuencia del recordatorio:", reply_markup=InlineKeyboardMarkup(keyboard_freq))
             return
 
         elif estado_input == "esperando_hora_semana":
@@ -985,6 +929,47 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 await update.message.reply_text(f"❌ Error al crear la lista: {e}", reply_markup=InlineKeyboardMarkup(keyboard))
             return
 
+    # Si el usuario escribe texto libre (Conversación natural inteligente / Acciones)
+    texto_completo = text.strip()
+    texto_lower = texto_completo.lower()
+    if str_id not in user_data_store:
+        user_data_store[str_id] = {"acciones": {}}
+    if "acciones" not in user_data_store[str_id]:
+        user_data_store[str_id]["acciones"] = {}
+
+    keyboard = [[InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]]
+
+    # Detectar si es una pregunta sobre un hábito (ej: "Yo cargué mi celular?", "Cerré la puerta?")
+    if "?" in texto_completo or "¿" in texto_completo or "cargué" in texto_lower or "cargue" in texto_lower or "cerre" in texto_lower or "cerré" in texto_lower or "revise" in texto_lower or "tomé" in texto_lower or "puse" in texto_lower:
+        clave_accion = texto_lower.replace("?", "").replace("¿", "").replace("yo", "").replace("el", "").replace("la", "").strip()
+        encontrada = False
+        hora_reg = ""
+        fecha_reg = ""
+        for acc, fecha_hora in user_data_store[str_id]["acciones"].items():
+            if any(palabra in acc for palabra in clave_accion.split() if len(palabra) > 3):
+                encontrada = True
+                f_h = fecha_hora.split(" ")
+                fecha_reg = f_h[0]
+                hora_reg = f_h[1]
+                break
+        
+        if encontrada:
+            if fecha_reg == hoy_str:
+                resp = f"Siii, registré '{clave_accion}' hoy a las {hora_reg} hs. 👍"
+            else:
+                resp = f"Nooo, no lo registré hoy; la última vez fue el {fecha_reg} a las {hora_reg} hs."
+        else:
+            resp = f"Nooo, no tengo registro de eso en mis datos recientes."
+    else:
+        # Es un registro natural de acción (ej: "Puse a cargar mi celular")
+        ahora_reg_str = ahora_arg.strftime("%Y-%m-%d %H:%M")
+        user_data_store[str_id]["acciones"][texto_lower] = ahora_reg_str
+        guardar_datos(user_data_store)
+        hora_actual = ahora_arg.strftime("%H:%M")
+        resp = f"Siii, registré '{texto_completo}' hoy a las {hora_actual} hs. ✅"
+
+    await update.message.reply_text(resp, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
     if user_id in recordatorio_temp_state:
         state = recordatorio_temp_state[user_id]
         step = state.get("step")
@@ -1008,11 +993,13 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 user_data_store[str_id] = {"recordatorios": [], "frecuentes": []}
 
             frecuencia = state.get("frecuencia")
+            texto_rec = state.get("texto")
+            
             if frecuencia == "Única vez":
                 if "recordatorios" not in user_data_store[str_id]:
                     user_data_store[str_id]["recordatorios"] = []
                 user_data_store[str_id]["recordatorios"].append({
-                    "texto": state.get("texto"),
+                    "texto": texto_rec,
                     "fecha": hoy_str,
                     "hora": text
                 })
@@ -1020,10 +1007,13 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 if "frecuentes" not in user_data_store[str_id]:
                     user_data_store[str_id]["frecuentes"] = []
                 user_data_store[str_id]["frecuentes"].append({
-                    "texto": state.get("texto"),
+                    "texto": texto_rec,
                     "frecuencia": frecuencia,
                     "hora": text
                 })
+
+            # Sincronizar también con Google Tasks (Punto 1)
+            agregar_google_task(user_id, f"[Recordatorio] {texto_rec} ({frecuencia} - {text} hs)")
 
             guardar_datos(user_data_store)
             del recordatorio_temp_state[user_id]
@@ -1033,8 +1023,8 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 [InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]
             ]
             await update.message.reply_text(
-                f"✅ **¡Recordatorio Creado con Éxito!**\n\n"
-                f"• {state.get('texto')}\n"
+                f"✅ **¡Recordatorio Creado y Sincronizado con Google Tasks!**\n\n"
+                f"• {texto_rec}\n"
                 f"• Frecuencia: {frecuencia}\n"
                 f"• Hora: {text} hs",
                 parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard_menu)
@@ -1092,13 +1082,6 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text(mensaje_final, reply_markup=InlineKeyboardMarkup(keyboard))
             return
 
-    # Corrección Punto 1: Ya no se agregan tareas automáticas desde texto libre; solo responde indicando usar el menú.
-    keyboard_main = [[InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]]
-    await update.message.reply_text(
-        "🤖 Para registrar hábitos usá la opción **Acción**, o elegí una opción del menú:",
-        reply_markup=InlineKeyboardMarkup(keyboard_main), parse_mode="Markdown"
-    )
-
 def main():
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
@@ -1121,7 +1104,7 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.VOICE | filters.TEXT & ~filters.COMMAND, handle_voice_or_text))
 
-    print("🚀 @SoyOrganizabot con separación total de módulos en marcha!")
+    print("🚀 @SoyOrganizabot con conversación fluida y sync de recordatorios en marcha!")
     app.run_polling()
 
 if __name__ == '__main__':
