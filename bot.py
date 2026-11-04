@@ -29,7 +29,6 @@ class SimpleHandler(BaseHTTPRequestHandler):
 def run_web_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(('0.0.0.0', port), SimpleHandler)
-    print(f"🌐 Servidor web escuchando en el puerto {port}")
     server.serve_forever()
 
 # --- ALMACENAMIENTO EN MEMORIA POR USUARIO ---
@@ -91,7 +90,6 @@ async def iniciar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "hora_fin_de_semana": "10:00"
         }
 
-    # Única botonera inicial para configurar reportes
     keyboard = [
         [InlineKeyboardButton("⚙️ Configurar reportes", callback_data="menu_config")]
     ]
@@ -113,7 +111,6 @@ async def iniciar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(texto_bienvenida, reply_markup=reply_markup)
 
-# --- CONFIGURACIÓN INTERACTIVA DE REPORTES ---
 async def configuracion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in user_data_store:
@@ -139,7 +136,6 @@ async def configuracion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(texto, reply_markup=InlineKeyboardMarkup(horas_buttons))
 
-# --- ASISTENTE DE REUNIONES INTERACTIVO ---
 async def agenda_reunion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     reunion_temp_state[user_id] = {"step": "tipo"}
@@ -173,7 +169,6 @@ async def listar_reuniones(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(texto)
 
-# --- ACCIONES COTIDIANAS ---
 async def accion_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     texto = " ".join(context.args)
@@ -221,7 +216,6 @@ async def accion_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         acciones_usuario.append({"accion": texto, "hora": hora_actual})
         await update.message.reply_text(f"✅ ¡Acción guardada!\nRegistré: {texto} a las {hora_actual} hs.")
 
-# --- LISTAS Y TAREAS ---
 async def nota_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     texto_nota = " ".join(context.args)
@@ -316,12 +310,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     chat_id = query.message.chat_id
 
-    # Menú principal una vez configurado
+    # Menú principal mediante botones personalizados
     if data == "menu_agenda":
         await agenda_reunion(update, context)
-        return
-    elif data == "menu_reuniones":
-        await listar_reuniones(update, context)
         return
     elif data == "menu_tareas":
         await tareas(update, context)
@@ -397,19 +388,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     chat_id=chat_id, user_id=user_id, name=j_name
                 )
 
-            # Menú principal con los 4 botones pedidos
+            # Menú principal con los 4 botones exactos pedidos por el usuario
             menu_keyboard = [
-                [InlineKeyboardButton("📅 Agendar Reunión", callback_data="menu_agenda"),
-                 InlineKeyboardButton("📌 Notas", callback_data="menu_notas")],
-                [InlineKeyboardButton("📝 Tareas", callback_data="menu_tareas"),
-                 InlineKeyboardButton("⚡ Acciones", callback_data="menu_acciones")]
+                [InlineKeyboardButton("Acciones", callback_data="menu_acciones"),
+                 InlineKeyboardButton("Tareas", callback_data="menu_tareas")],
+                [InlineKeyboardButton("Notas", callback_data="menu_notas"),
+                 InlineKeyboardButton("Agendar reunión", callback_data="menu_agenda")]
             ]
             
             resumen_texto = (
                 "🎉 ¡Configuración completada con éxito!\n\n"
-                f"• Lunes a Viernes: {h_sem_str} hs\n"
-                f"• Fines de semana: {h_fin_str} hs\n\n"
-                "Ya podés utilizar el menú principal:"
+                f"• Horario Semanal: {h_sem_str} hs\n"
+                f"• Horario Fin de Semana: {h_fin_str} hs\n\n"
+                "Ya podés utilizar las opciones del bot:"
             )
             await query.edit_message_text(resumen_texto, reply_markup=InlineKeyboardMarkup(menu_keyboard))
             return
