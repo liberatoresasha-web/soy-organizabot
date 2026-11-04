@@ -116,7 +116,6 @@ async def configuracion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id not in user_data_store:
         user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "hora_semana": "08:00", "hora_fin_de_semana": "10:00"}
 
-    # Paso 1: Configurar hora semanal
     reunion_temp_state[user_id] = {"step": "cfg_sem_hora"}
     
     horas_buttons = []
@@ -311,7 +310,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     chat_id = query.message.chat_id
 
-    # Menú principal mediante botones personalizados
+    # Menú principal con los nombres exactos pedidos
     if data == "menu_agenda":
         await agenda_reunion(update, context)
         return
@@ -338,7 +337,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reunion_temp_state[user_id]["sem_h"] = h_val
         reunion_temp_state[user_id]["step"] = "cfg_sem_min"
 
-        # Minutos ordenados cronológicamente
         min_buttons = [
             [InlineKeyboardButton("00 min", callback_data="cfgm_sem_00"), InlineKeyboardButton("15 min", callback_data="cfgm_sem_15")],
             [InlineKeyboardButton("30 min", callback_data="cfgm_sem_30"), InlineKeyboardButton("45 min", callback_data="cfgm_sem_45")]
@@ -389,7 +387,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"⚙️ Hora fin de semana seleccionada: {h_val} hs.\n\n**Paso 4/4:** Seleccioná los minutos:", reply_markup=InlineKeyboardMarkup(min_buttons), parse_mode="Markdown")
         return
 
-    # 4. Seleccionó minutos fin de semana -> GUARDAR TODO Y MOSTRAR MENÚ DEFINITIVO
+    # 4. Seleccionó minutos fin de semana -> GUARDAR Y MOSTRAR MENÚ DEFINITIVO
     elif data.startswith("cfgm_fin_"):
         m_val = data.replace("cfgm_fin_", "")
         if user_id not in reunion_temp_state:
@@ -406,7 +404,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         h_sem_str = user_data_store[user_id].get("hora_semana", "08:00")
         h_fin_str = hora_fin_completa
         
-        # Programar tareas diarias
         for tipo_j, h_str_val in [("sem", h_sem_str), ("fin", h_fin_str)]:
             p = h_str_val.split(":")
             ht, mt = int(p[0]), int(p[1])
@@ -420,7 +417,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id=chat_id, user_id=user_id, name=j_name
             )
 
-        # Menú principal con los nombres exactos pedidos
+        # Menú principal con los 4 botones limpios exactamente como los pediste
         menu_keyboard = [
             [InlineKeyboardButton("Acciones", callback_data="menu_acciones"),
              InlineKeyboardButton("Tareas", callback_data="menu_tareas")],
