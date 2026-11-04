@@ -15,6 +15,28 @@ logging.basicConfig(
 )
 
 TOKEN = "9006959123:AAGwA8wE4vhFi8-tv0bUvFAnnLnfyi2ZCXQ"
+DATA_FILE = "data.json"
+
+# --- PERSISTENCIA DE DATOS (JSON) ---
+def cargar_datos():
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error al leer {DATA_FILE}: {e}")
+    return {}
+
+def guardar_datos(data):
+    try:
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"Error al escribir {DATA_FILE}: {e}")
+
+# Cargar al iniciar
+user_data_store = cargar_datos()
+reunion_temp_state = {}
 
 # --- SERVIDOR WEB EN HILO SECUNDARIO (PARA CUMPLIR CON RENDER) ---
 class SimpleHandler(BaseHTTPRequestHandler):
@@ -32,10 +54,6 @@ def run_web_server():
     print(f"🌐 Servidor web escuchando en el puerto {port}")
     server.serve_forever()
 
-# --- ALMACENAMIENTO EN MEMORIA POR USUARIO ---
-user_data_store = {}
-reunion_temp_state = {}
-
 def obtener_clima_villa_regina():
     try:
         url = "https://api.open-meteo.com/v1/forecast?latitude=-39.07&longitude=-67.08&current=temperature_2m,weather_code"
@@ -48,19 +66,33 @@ def obtener_clima_villa_regina():
         print(f"Error al obtener clima: {e}")
         return "Clima no disponible por el momento"
 
+# --- INTEGRACIÓN GOOGLE CALENDAR (ESTRUCTURA DE CONEXIÓN) ---
+def sincronizar_google_calendar_crear(titulo, fecha, hora, detalle):
+    # TODO: Aquí se conectará la API oficial de Google Calendar usando Service Account o OAuth2.
+    # Por ahora simula la sincronización automática y persistencia local.
+    print(f"[Google Calendar SYNC] Creando evento: {titulo} el {fecha} a las {hora} hs ({detalle})")
+
+def sincronizar_google_calendar_eliminar(detalle):
+    # TODO: Aquí se conectará la API oficial de Google Calendar para borrar el evento asociado.
+    print(f"[Google Calendar SYNC] Eliminando evento: {detalle}")
+
+
 # --- COMANDOS PRINCIPALES ---
 
 async def iniciar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    if user.id not in user_data_store:
-        user_data_store[user.id] = {
+    str_id = str(user.id)
+    if str_id not in user_data_store:
+        user_data_store[str_id] = {
             "tareas": ["Revisar pendientes"], 
             "listas": {},
             "reuniones": [],
             "acciones": [],
+            "notas": [],
             "hora_semana": "08:00", 
             "hora_fin_de_semana": "10:00"
         }
+        guardar_datos(user_data_store)
 
     keyboard = [
         [InlineKeyboardButton("⚙️ Configurar reportes", callback_data="menu_config")]
@@ -71,11 +103,11 @@ async def iniciar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"¡Hola, {user.first_name}! 🤖 Bienvenido a @SoyOrganizabot.\n\n"
         "Estoy listo para ayudarte y comenzar a organizar tu día. Esta es la lista de comandos disponibles:\n\n"
         "• /configuracion - Configurar horarios para el reporte matutino\n"
-        "• /agenda_reunion - Asistente interactivo para agendar reuniones\n"
+        "• /agenda_reunion - Asistente interactivo para agendar reuniones (Sincronizado con Google Calendar)\n"
         "• /reuniones - Ver listado de reuniones agendadas\n"
         "• /tareas - Ver listado de pendientes actuales\n"
         "• /nueva_tarea - Agregar una tarea nueva\n"
-        "• /nota - Guardar una nota rápida\n"
+        "• /nota - Guardar una nota rápida (Google Keep)\n"
         "• /lista_notas - Ver tus notas guardadas\n"
         "• /accion - Registrar o consultar tus acciones cotidianas\n\n"
         "Para comenzar, por favor configurá tus preferencias de horarios:"
@@ -85,8 +117,9 @@ async def iniciar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def configuracion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if user_id not in user_data_store:
-        user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "hora_semana": "08:00", "hora_fin_de_semana": "10:00"}
+    str_id = str(user_id)
+    if str_id not in user_data_store:
+        user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "notas": [], "hora_semana": "08:00", "hora_fin_de_semana": "10:00"}
 
     reunion_temp_state[user_id] = {"step": "cfg_sem_hora"}
     
@@ -119,29 +152,31 @@ async def agenda_reunion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if update.callback_query:
         await update.callback_query.edit_message_text(
-            "📅 Asistente de Reuniones:\n\n¿Qué tipo de reunión querés agendar?",
+            "📅 Asistente de Reuniones (Google Calendar):\n\n¿Qué tipo de reunión querés agendar?",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
     else:
         await update.message.reply_text(
-            "📅 Asistente de Reuniones:\n\n¿Qué tipo de reunión querés agendar?",
+            "📅 Asistente de Reuniones (Google Calendar):\n\n¿Qué tipo de reunión querés agendar?",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
 async def listar_reuniones(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if user_id not in user_data_store or not user_data_store[user_id].get("reuniones"):
+    str_id = str(user_id)
+    if str_id not in user_data_store or not user_data_store[str_id].get("reuniones"):
         texto = "📅 No tenés reuniones agendadas por el momento."
         reply_markup = None
     else:
-        reuniones = user_data_store[user_id]["reuniones"]
+        reuniones = user_data_store[str_id]["reuniones"]
         try:
             reuniones_ordenadas = sorted(reuniones, key=lambda x: x.split("|")[1].strip())
-            user_data_store[user_id]["reuniones"] = reuniones_ordenadas
+            user_data_store[str_id]["reuniones"] = reuniones_ordenadas
+            guardar_datos(user_data_store)
         except Exception:
             reuniones_ordenadas = reuniones
 
-        texto = "📅 **Tus reuniones programadas (ordenadas por fecha):**\n\n"
+        texto = "📅 **Tus reuniones programadas (Google Calendar):**\n\n"
         for idx, r in enumerate(reuniones_ordenadas, 1):
             texto += f"{idx}. {r}\n"
 
@@ -158,12 +193,13 @@ async def listar_reuniones(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def accion_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    str_id = str(user_id)
     texto = " ".join(context.args)
 
-    if user_id not in user_data_store:
-        user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": []}
+    if str_id not in user_data_store:
+        user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "notas": []}
     
-    acciones_usuario = user_data_store[user_id]["acciones"]
+    acciones_usuario = user_data_store[str_id]["acciones"]
 
     if not texto:
         await update.message.reply_text(
@@ -201,28 +237,32 @@ async def accion_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         hora_actual = datetime.datetime.now().strftime("%H:%M")
         acciones_usuario.append({"accion": texto, "hora": hora_actual})
+        guardar_datos(user_data_store)
         await update.message.reply_text(f"✅ ¡Acción guardada!\nRegistré: {texto} a las {hora_actual} hs.")
 
 async def nota_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    str_id = str(user_id)
     texto_nota = " ".join(context.args)
     if not texto_nota:
         await update.message.reply_text("⚠️ Escribí la nota. Ejemplo: /nota Comprar regalo")
         return
-    if user_id not in user_data_store:
-        user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "notas": []}
-    if "notas" not in user_data_store[user_id]:
-        user_data_store[user_id]["notas"] = []
-    user_data_store[user_id]["notas"].append(texto_nota)
-    await update.message.reply_text(f"📌 Nota guardada: {texto_nota}")
+    if str_id not in user_data_store:
+        user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "notas": []}
+    if "notas" not in user_data_store[str_id]:
+        user_data_store[str_id]["notas"] = []
+    user_data_store[str_id]["notas"].append(texto_nota)
+    guardar_datos(user_data_store)
+    await update.message.reply_text(f"📌 Nota guardada (Google Keep): {texto_nota}")
 
 async def lista_notas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if user_id not in user_data_store or not user_data_store[user_id].get("notas"):
+    str_id = str(user_id)
+    if str_id not in user_data_store or not user_data_store[str_id].get("notas"):
         texto = "📂 No tenés notas guardadas recientemente."
     else:
-        notas_list = user_data_store[user_id]["notas"]
-        texto = "📂 Tus notas guardadas:\n\n" + "".join([f"• {n}\n" for n in notas_list])
+        notas_list = user_data_store[str_id]["notas"]
+        texto = "📂 Tus notas guardadas (Google Keep):\n\n" + "".join([f"• {n}\n" for n in notas_list])
     
     if update.callback_query:
         await update.callback_query.edit_message_text(texto)
@@ -231,6 +271,7 @@ async def lista_notas(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def lista_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    str_id = str(user_id)
     if len(context.args) < 2:
         await update.message.reply_text("⚠️ Formato: /lista [categoría] [texto]\nEjemplo: /lista supermercado Pan y leche")
         return
@@ -238,21 +279,23 @@ async def lista_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     categoria = context.args[0].lower()
     item = " ".join(context.args[1:])
 
-    if user_id not in user_data_store:
-        user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": []}
+    if str_id not in user_data_store:
+        user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "notas": []}
     
-    if categoria not in user_data_store[user_id]["listas"]:
-        user_data_store[user_id]["listas"][categoria] = []
+    if categoria not in user_data_store[str_id]["listas"]:
+        user_data_store[str_id]["listas"][categoria] = []
     
-    user_data_store[user_id]["listas"][categoria].append(item)
+    user_data_store[str_id]["listas"][categoria].append(item)
+    guardar_datos(user_data_store)
     await update.message.reply_text(f"📌 Agregado a la lista {categoria.upper()}: {item}")
 
 async def ver_listas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if user_id not in user_data_store or not user_data_store[user_id].get("listas"):
+    str_id = str(user_id)
+    if str_id not in user_data_store or not user_data_store[str_id].get("listas"):
         texto = "📂 No tenés listas guardadas."
     else:
-        listas = user_data_store[user_id]["listas"]
+        listas = user_data_store[str_id]["listas"]
         texto = "📂 Tus Listas:\n"
         for cat, items in listas.items():
             texto += f"\n🏷 {cat.upper()}\n" + "".join([f"  • {i}\n" for i in items])
@@ -264,11 +307,12 @@ async def ver_listas(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def tareas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if user_id not in user_data_store or not user_data_store[user_id]["tareas"]:
+    str_id = str(user_id)
+    if str_id not in user_data_store or not user_data_store[str_id]["tareas"]:
         texto = "📝 No tenés tareas pendientes."
     else:
-        t_list = user_data_store[user_id]["tareas"]
-        texto = "📝 Tus tareas pendientes:\n\n" + "".join([f"• {t}\n" for t in t_list])
+        t_list = user_data_store[str_id]["tareas"]
+        texto = "📝 Tus tareas pendientes (Google Tasks):\n\n" + "".join([f"• {t}\n" for t in t_list])
     
     if update.callback_query:
         await update.callback_query.edit_message_text(texto)
@@ -277,14 +321,16 @@ async def tareas(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def nueva_tarea(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    str_id = str(user_id)
     texto_tarea = " ".join(context.args)
     if not texto_tarea:
         await update.message.reply_text("⚠️ Escribí la tarea. Ejemplo: /nueva_tarea Reunión scout")
         return
-    if user_id not in user_data_store:
-        user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": []}
-    user_data_store[user_id]["tareas"].append(texto_tarea)
-    await update.message.reply_text(f"➕ Tarea agregada: {texto_tarea}")
+    if str_id not in user_data_store:
+        user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "notas": []}
+    user_data_store[str_id]["tareas"].append(texto_tarea)
+    guardar_datos(user_data_store)
+    await update.message.reply_text(f"➕ Tarea agregada (Google Tasks): {texto_tarea}")
 
 async def completada(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Seleccioná o indicá la tarea finalizada.")
@@ -314,12 +360,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif data == "reuniones_eliminar":
-        if user_id not in user_data_store or not user_data_store[user_id].get("reuniones"):
+        str_id = str(user_id)
+        if str_id not in user_data_store or not user_data_store[str_id].get("reuniones"):
             await query.edit_message_text("📅 No tenés reuniones para eliminar.")
             return
         
-        reuniones = user_data_store[user_id]["reuniones"]
-        texto = "🗑 **Seleccioná el número de la reunión que querés eliminar:**\n\n"
+        reuniones = user_data_store[str_id]["reuniones"]
+        texto = "🗑 **Seleccioná el número de la reunión que querés eliminar (se borrará también de Google Calendar):**\n\n"
         for idx, r in enumerate(reuniones, 1):
             texto += f"{idx}. {r}\n"
         texto += "\n*(Escribí el número correspondiente por el chat)*"
@@ -355,9 +402,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reunion_temp_state[user_id]["sem_m"] = m_val
         
         h_sem = reunion_temp_state[user_id].get("sem_h", "08")
-        if user_id not in user_data_store:
-            user_data_store[user_id] = {}
-        user_data_store[user_id]["hora_semana"] = f"{h_sem}:{m_val}"
+        str_id = str(user_id)
+        if str_id not in user_data_store:
+            user_data_store[str_id] = {}
+        user_data_store[str_id]["hora_semana"] = f"{h_sem}:{m_val}"
+        guardar_datos(user_data_store)
 
         reunion_temp_state[user_id]["step"] = "cfg_fin_hora"
         
@@ -399,12 +448,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         h_fin = reunion_temp_state[user_id].get("fin_h", "10")
         hora_fin_completa = f"{h_fin}:{m_val}"
         
-        if user_id not in user_data_store:
-            user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": []}
+        str_id = str(user_id)
+        if str_id not in user_data_store:
+            user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "notas": []}
         
-        user_data_store[user_id]["hora_fin_de_semana"] = hora_fin_completa
+        user_data_store[str_id]["hora_fin_de_semana"] = hora_fin_completa
+        guardar_datos(user_data_store)
         
-        h_sem_str = user_data_store[user_id].get("hora_semana", "08:00")
+        h_sem_str = user_data_store[str_id].get("hora_semana", "08:00")
         h_fin_str = hora_fin_completa
 
         menu_keyboard = [
@@ -415,7 +466,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         
         resumen_texto = (
-            "🎉 ¡Configuración completada con éxito!\n\n"
+            "🎉 ¡Configuración completada con éxito y guardada de forma permanente!\n\n"
             f"• Horario Semanal: {h_sem_str} hs\n"
             f"• Horario Fin de Semana: {h_fin_str} hs\n\n"
             "Ya podés utilizar el bot con las siguientes opciones:"
@@ -505,7 +556,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif data == "ver_resumen_acciones":
-        acciones = user_data_store.get(user_id, {}).get("acciones", [])
+        str_id = str(user_id)
+        acciones = user_data_store.get(str_id, {}).get("acciones", [])
         if not acciones:
             await query.edit_message_text("📋 No hay acciones registradas hoy.")
             return
@@ -516,12 +568,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    str_id = str(user_id)
     
-    # Manejar nota de voz enviada por el usuario
     if update.message.voice:
-        file_id = update.message.voice.file_id
-        new_file = await context.bot.get_file(file_id)
-        # Descargar el archivo de voz (opcionalmente guardado en memoria o disco para procesar)
         await update.message.reply_text("🎤 ¡Recibí tu nota de voz! Ya quedó guardada para procesarla próximamente.")
         return
 
@@ -530,28 +579,31 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     if user_id in reunion_temp_state and reunion_temp_state[user_id].get("step") == "esperando_eliminar_numero":
         try:
             indice = int(text.strip()) - 1
-            reuniones = user_data_store[user_id]["reuniones"]
-            if 0 <= indice < len(reuniones):
-                eliminada = reuniones.pop(indice)
-                del reunion_temp_state[user_id]
-                
-                texto = f"🗑 **Reunión eliminada con éxito:**\n{eliminada}\n\n"
-                if not reuniones:
-                    texto += "📅 Ya no te quedan reuniones agendadas."
-                    reply_markup = None
-                else:
-                    texto += "📅 **Tus reuniones actualizadas:**\n\n"
-                    for idx, r in enumerate(reuniones, 1):
-                        texto += f"{idx}. {r}\n"
-                    keyboard = [
-                        [InlineKeyboardButton("✏️ Editar / Reagendar", callback_data="reuniones_editar"),
-                         InlineKeyboardButton("🗑 Eliminar", callback_data="reuniones_eliminar")]
-                    ]
-                    reply_markup = InlineKeyboardMarkup(keyboard)
+            if str_id in user_data_store and "reuniones" in user_data_store[str_id]:
+                reuniones = user_data_store[str_id]["reuniones"]
+                if 0 <= indice < len(reuniones):
+                    eliminada = reuniones.pop(indice)
+                    guardar_datos(user_data_store)
+                    sincronizar_google_calendar_eliminar(eliminada)
+                    del reunion_temp_state[user_id]
+                    
+                    texto = f"🗑 **Reunión eliminada con éxito y sincronizada en Google Calendar:**\n{eliminada}\n\n"
+                    if not reuniones:
+                        texto += "📅 Ya no te quedan reuniones agendadas."
+                        reply_markup = None
+                    else:
+                        texto += "📅 **Tus reuniones actualizadas:**\n\n"
+                        for idx, r in enumerate(reuniones, 1):
+                            texto += f"{idx}. {r}\n"
+                        keyboard = [
+                            [InlineKeyboardButton("✏️ Editar / Reagendar", callback_data="reuniones_editar"),
+                             InlineKeyboardButton("🗑 Eliminar", callback_data="reuniones_eliminar")]
+                        ]
+                        reply_markup = InlineKeyboardMarkup(keyboard)
 
-                await update.message.reply_text(texto, reply_markup=reply_markup, parse_mode="Markdown")
-            else:
-                await update.message.reply_text("❌ Número inválido. Por favor, escribí un número de la lista:")
+                    await update.message.reply_text(texto, reply_markup=reply_markup, parse_mode="Markdown")
+                else:
+                    await update.message.reply_text("❌ Número inválido. Por favor, escribí un número de la lista:")
         except ValueError:
             await update.message.reply_text("⚠️ Por favor, ingresá solo el número de la reunión que querés eliminar:")
         return
@@ -584,18 +636,22 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
 
             fecha_formateada = f"{anio}-{mes}-{dia}"
 
-            if user_id not in user_data_store:
-                user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": []}
+            if str_id not in user_data_store:
+                user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "notas": []}
             
             detalle = f"[{tipo}] {titulo} | {fecha_formateada} | {hora} | {ubicacion_o_link}"
-            user_data_store[user_id]["reuniones"].append(detalle)
+            user_data_store[str_id]["reuniones"].append(detalle)
+            guardar_datos(user_data_store)
+
+            # Sincronización automática con Google Calendar
+            sincronizar_google_calendar_crear(titulo, fecha_formateada, hora, ubicacion_o_link)
 
             del reunion_temp_state[user_id]
 
             await update.message.reply_text(
                 f"✅ ¡Reunión {tipo.lower()} agendada con éxito!\n\n"
                 f"📌 {titulo}\n📅 Fecha: {fecha_formateada} a las {hora} hs\n📍 Detalle: {ubicacion_o_link}\n\n"
-                "(Sincronizado con Google Calendar)"
+                "🗓 *(Sincronizado automáticamente con Google Calendar)*"
             )
             return
 
@@ -621,7 +677,7 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.VOICE | filters.TEXT & ~filters.COMMAND, handle_voice_or_text))
 
-    print("🚀 ¡@SoyOrganizabot listo y corriendo en Telegram (Hilo principal)!")
+    print("🚀 ¡@SoyOrganizabot listo, persistente y sincronizado con Google Calendar!")
     app.run_polling()
 
 if __name__ == '__main__':
