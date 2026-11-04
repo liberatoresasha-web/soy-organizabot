@@ -1,12 +1,13 @@
 import os
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler, MessageHandler, filters, JobQueue
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 import datetime
 import urllib.request
 import json
+import time
 
 # Configurar logs
 logging.basicConfig(
@@ -47,35 +48,6 @@ def obtener_clima_villa_regina():
     except Exception as e:
         print(f"Error al obtener clima: {e}")
         return "Clima no disponible por el momento"
-
-async def enviar_reporte_matutino(context: ContextTypes.DEFAULT_TYPE):
-    job = context.job
-    chat_id = job.chat_id
-    user_id = job.user_id
-
-    if user_id not in user_data_store:
-        user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "hora_semana": "08:00", "hora_fin_de_semana": "10:00"}
-    
-    hoy_es_finde = datetime.datetime.now().weekday() >= 5
-    tareas_pendientes = user_data_store[user_id].get("tareas", [])
-    clima = obtener_clima_villa_regina()
-
-    if tareas_pendientes:
-        lista_str = "\n".join([f"• {t}" for t in tareas_pendientes])
-    else:
-        lista_str = "• No tenés tareas pendientes para hoy. ¡Día libre! 🎉"
-
-    saludo_extra = "¡Que tengas una excelente jornada!" if not hoy_es_finde else "¡Disfrutá del fin de semana! 🌴"
-
-    mensaje = (
-        f"☀️ ¡Buen día!\n\n"
-        f"🌤 Clima en Villa Regina: {clima}\n\n"
-        "📝 Tus tareas pendientes:\n"
-        f"{lista_str}\n\n"
-        f"{saludo_extra}"
-    )
-
-    await context.bot.send_message(chat_id=chat_id, text=mensaje)
 
 # --- COMANDOS PRINCIPALES ---
 
@@ -329,9 +301,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await configuracion(update, context)
         return
 
-    # --- FLUJO DE CONFIGURACIÓN PASO A PASO (DE 5 EN 5 MINUTOS) ---
+    # --- FLUJO DE CONFIGURACIÓN PASO A PASO ---
     
-    # 1. Seleccionó hora semanal
+    # 1. Seleccionó hora semanal (04 a 12 hs)
     if data.startswith("cfgh_sem_"):
         h_val = data.replace("cfgh_sem_", "")
         if user_id not in reunion_temp_state:
@@ -339,7 +311,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reunion_temp_state[user_id]["sem_h"] = h_val
         reunion_temp_state[user_id]["step"] = "cfg_sem_min"
 
-        # Minutos de 5 en 5 ordenados
         min_buttons = [
             [InlineKeyboardButton("00 min", callback_data="cfgm_sem_00"), InlineKeyboardButton("05 min", callback_data="cfgm_sem_05"), InlineKeyboardButton("10 min", callback_data="cfgm_sem_10")],
             [InlineKeyboardButton("15 min", callback_data="cfgm_sem_15"), InlineKeyboardButton("20 min", callback_data="cfgm_sem_20"), InlineKeyboardButton("25 min", callback_data="cfgm_sem_25")],
@@ -410,19 +381,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         h_sem_str = user_data_store[user_id].get("hora_semana", "08:00")
         h_fin_str = hora_fin_completa
-        
-        for tipo_j, h_str_val in [("sem", h_sem_str), ("fin", h_fin_str)]:
-            p = h_str_val.split(":")
-            ht, mt = int(p[0]), int(p[1])
-            utc_h = (ht + 3) % 24
-            j_name = f"{user_id}_{tipo_j}"
-            for job in context.job_queue.get_jobs_by_name(j_name):
-                job.schedule_removal()
-            context.job_queue.run_daily(
-                enviar_reporte_matutino,
-                time=datetime.time(hour=utc_h, minute=mt, second=0),
-                chat_id=chat_id, user_id=user_id, name=j_name
-            )
 
         # Menú principal con los 4 botones limpios exactamente como los pediste
         menu_keyboard = [
@@ -588,7 +546,7 @@ def main():
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
 
-    app = ApplicationBuilder().token(TOKEN).job_queue(JobQueue()).build()
+    app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", iniciar))
     app.add_handler(CommandHandler("iniciar", iniciar))
