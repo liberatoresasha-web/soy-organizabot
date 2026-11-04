@@ -7,7 +7,6 @@ import threading
 import datetime
 import urllib.request
 import json
-import time
 
 # Configurar logs
 logging.basicConfig(
@@ -89,7 +88,6 @@ async def configuracion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id not in user_data_store:
         user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "hora_semana": "08:00", "hora_fin_de_semana": "10:00"}
 
-    # Paso 1: Configurar hora semanal (de 04 a 12 hs)
     reunion_temp_state[user_id] = {"step": "cfg_sem_hora"}
     
     horas_buttons = []
@@ -134,14 +132,30 @@ async def listar_reuniones(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in user_data_store or not user_data_store[user_id].get("reuniones"):
         texto = "📅 No tenés reuniones agendadas por el momento."
+        reply_markup = None
     else:
-        reuniones_list = user_data_store[user_id]["reuniones"]
-        texto = "📅 Tus reuniones programadas:\n\n" + "".join([f"• {r}\n" for r in reuniones_list])
+        reuniones = user_data_store[user_id]["reuniones"]
+        # Ordenar reuniones por fecha extraída del string (formato YYYY-MM-DD)
+        try:
+            reuniones_ordenadas = sorted(reuniones, key=lambda x: x.split("|")[1].strip())
+            user_data_store[user_id]["reuniones"] = reuniones_ordenadas
+        except Exception:
+            reuniones_ordenadas = reuniones
+
+        texto = "📅 **Tus reuniones programadas (ordenadas por fecha):**\n\n"
+        for idx, r in enumerate(reuniones_ordenadas, 1):
+            texto += f"{idx}. {r}\n"
+
+        keyboard = [
+            [InlineKeyboardButton("✏️ Editar / Reagendar", callback_data="reuniones_editar"),
+             InlineKeyboardButton("🗑 Eliminar", callback_data="reuniones_eliminar")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
     
     if update.callback_query:
-        await update.callback_query.edit_message_text(texto)
+        await update.callback_query.edit_message_text(texto, reply_markup=reply_markup, parse_mode="Markdown")
     else:
-        await update.message.reply_text(texto)
+        await update.message.reply_text(texto, reply_markup=reply_markup, parse_mode="Markdown")
 
 async def accion_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -301,9 +315,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await configuracion(update, context)
         return
 
+    # Gestión de Reuniones desde la botonera de /reuniones
+    elif data == "reuniones_eliminar":
+        if user_id not in user_data_store or not user_data_store[user_id].get("reuniones"):
+            await query.edit_message_text("📅 No tenés reuniones para eliminar.")
+            return
+        
+        reuniones = user_data_store[user_id]["reuniones"]
+        texto = "🗑 **Seleccioná el número de la reunión que querés eliminar:**\n\n"
+        for idx, r in enumerate(reuniones, 1):
+            texto += f"{idx}. {r}\n"
+        texto += "\n*(Escribí el número correspondiente por el chat)*"
+        
+        reunion_temp_state[user_id] = {"step": "esperando_eliminar_numero"}
+        await query.edit_message_text(texto, parse_mode="Markdown")
+        return
+
+    elif data == "reuniones_editar":
+        await query.edit_message_text("✏️ Para reagendar o editar una reunión, podés volver a crearla con /agenda_reunion o eliminar la actual.")
+        return
+
     # --- FLUJO DE CONFIGURACIÓN PASO A PASO ---
-    
-    # 1. Seleccionó hora semanal (04 a 12 hs)
     if data.startswith("cfgh_sem_"):
         h_val = data.replace("cfgh_sem_", "")
         if user_id not in reunion_temp_state:
@@ -320,7 +352,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"⚙️ Hora semanal seleccionada: {h_val} hs.\n\n**Paso 2/4:** Seleccioná los minutos:", reply_markup=InlineKeyboardMarkup(min_buttons), parse_mode="Markdown")
         return
 
-    # 2. Seleccionó minutos semanales -> Pasa a hora fin de semana (07 a 16 hs)
     elif data.startswith("cfgm_sem_"):
         m_val = data.replace("cfgm_sem_", "")
         if user_id not in reunion_temp_state:
@@ -348,7 +379,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"✅ Horario Semanal guardado ({h_sem}:{m_val} hs).\n\n⚙️ **Paso 3/4:** Seleccioná la hora para el **Horario Fin de Semana** (de 07 a 16 hs):", reply_markup=InlineKeyboardMarkup(horas_buttons), parse_mode="Markdown")
         return
 
-    # 3. Seleccionó hora fin de semana
     elif data.startswith("cfgh_fin_"):
         h_val = data.replace("cfgh_fin_", "")
         if user_id not in reunion_temp_state:
@@ -365,7 +395,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"⚙️ Hora fin de semana seleccionada: {h_val} hs.\n\n**Paso 4/4:** Seleccioná los minutos:", reply_markup=InlineKeyboardMarkup(min_buttons), parse_mode="Markdown")
         return
 
-    # 4. Seleccionó minutos fin de semana -> GUARDAR Y MOSTRAR MENÚ DEFINITIVO
     elif data.startswith("cfgm_fin_"):
         m_val = data.replace("cfgm_fin_", "")
         if user_id not in reunion_temp_state:
@@ -382,7 +411,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         h_sem_str = user_data_store[user_id].get("hora_semana", "08:00")
         h_fin_str = hora_fin_completa
 
-        # Menú principal con los 4 botones limpios exactamente como los pediste
         menu_keyboard = [
             [InlineKeyboardButton("Acciones", callback_data="menu_acciones"),
              InlineKeyboardButton("Tareas", callback_data="menu_tareas")],
@@ -497,6 +525,37 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if update.message.voice:
         await update.message.reply_text("🎤 Recibí tu nota de voz. (Próximamente transcripción automática integrada). Por ahora podés usar los comandos.")
+        return
+
+    # Verificar si está esperando el número para eliminar una reunión
+    if user_id in reunion_temp_state and reunion_temp_state[user_id].get("step") == "esperando_eliminar_numero":
+        try:
+            indice = int(text.strip()) - 1
+            reuniones = user_data_store[user_id]["reuniones"]
+            if 0 <= indice < len(reuniones):
+                eliminada = reuniones.pop(indice)
+                del reunion_temp_state[user_id]
+                
+                # Mostrar confirmación y nuevo listado ordenado
+                texto = f"🗑 **Reunión eliminada con éxito:**\n{eliminada}\n\n"
+                if not reuniones:
+                    texto += "📅 Ya no te quedan reuniones agendadas."
+                    reply_markup = None
+                else:
+                    texto += "📅 **Tus reuniones actualizadas:**\n\n"
+                    for idx, r in enumerate(reuniones, 1):
+                        texto += f"{idx}. {r}\n"
+                    keyboard = [
+                        [InlineKeyboardButton("✏️ Editar", callback_data="reuniones_editar"),
+                         InlineKeyboardButton("🗑 Eliminar", callback_data="reuniones_eliminar")]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+
+                await update.message.reply_text(texto, reply_markup=reply_markup, parse_mode="Markdown")
+            else:
+                await update.message.reply_text("❌ Número inválido. Por favor, escribí un número de la lista:")
+        except ValueError:
+            await update.message.reply_text("⚠️ Por favor, ingresá solo el número de la reunión que querés eliminar:")
         return
 
     if user_id in reunion_temp_state:
