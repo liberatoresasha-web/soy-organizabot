@@ -65,17 +65,17 @@ async def enviar_reporte_matutino(context: ContextTypes.DEFAULT_TYPE):
     else:
         lista_str = "• No tenés tareas pendientes para hoy. ¡Día libre! 🎉"
 
-    saludo_extra = "¡Disfrutá del fin de semana, Sasha! 🌴" if hoy_es_finde else "¡Que tengas una excelente jornada laboral!"
+    saludo_extra = "¡Que tengas una excelente jornada!" if not hoy_es_finde else "¡Disfrutá del fin de semana! 🌴"
 
     mensaje = (
-        f"☀️ **¡Buen día, Sasha!** 🤖☕\n\n"
-        f"🌤 **Clima en Villa Regina:** {clima}\n\n"
-        "📝 **Tus tareas pendientes:**\n"
+        f"☀️ ¡Buen día!\n\n"
+        f"🌤 Clima en Villa Regina: {clima}\n\n"
+        "📝 Tus tareas pendientes:\n"
         f"{lista_str}\n\n"
         f"{saludo_extra}"
     )
 
-    await context.bot.send_message(chat_id=chat_id, text=mensaje, parse_mode="Markdown")
+    await context.bot.send_message(chat_id=chat_id, text=mensaje)
 
 # --- COMANDOS PRINCIPALES ---
 
@@ -83,8 +83,8 @@ async def iniciar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if user.id not in user_data_store:
         user_data_store[user.id] = {
-            "tareas": ["Revisar pendientes de recursos humanos"], 
-            "listas": {"supermercado": ["Leche", "Café"]},
+            "tareas": ["Revisar pendientes"], 
+            "listas": {},
             "reuniones": [],
             "acciones": [],
             "hora_semana": "08:00", 
@@ -98,9 +98,9 @@ async def iniciar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     texto_bienvenida = (
-        f"¡Hola, **{user.first_name}**! 🤖 Bienvenido a @SoyOrganizabot.\n\n"
+        f"¡Hola, {user.first_name}! 🤖 Bienvenido a @SoyOrganizabot.\n\n"
         "Estoy listo para ayudarte y comenzar a organizar tu día. Esta es la lista de comandos disponibles:\n\n"
-        "• /configuracion - Configurar horarios para el **reporte matutino**\n"
+        "• /configuracion - Configurar horarios para el reporte matutino\n"
         "• /agenda_reunion - Asistente interactivo para agendar reuniones\n"
         "• /reuniones - Ver listado de reuniones agendadas\n"
         "• /tareas - Ver listado de pendientes actuales\n"
@@ -111,7 +111,7 @@ async def iniciar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Para comenzar, por favor configurá tus preferencias de horarios:"
     )
 
-    await update.message.reply_text(texto_bienvenida, reply_markup=reply_markup, parse_mode="Markdown")
+    await update.message.reply_text(texto_bienvenida, reply_markup=reply_markup)
 
 # --- CONFIGURACIÓN INTERACTIVA DE REPORTES ---
 async def configuracion(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -132,12 +132,12 @@ async def configuracion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if fila:
         horas_buttons.append(fila)
 
-    texto = "⚙️ **Paso 1/2:** Seleccioná la hora para el **Horario Semanal (Lunes a Viernes)**:"
+    texto = "⚙️ Paso 1/2: Seleccioná la hora para el Horario Semanal (Lunes a Viernes):"
     
     if update.callback_query:
-        await update.callback_query.edit_message_text(texto, reply_markup=InlineKeyboardMarkup(horas_buttons), parse_mode="Markdown")
+        await update.callback_query.edit_message_text(texto, reply_markup=InlineKeyboardMarkup(horas_buttons))
     else:
-        await update.message.reply_text(texto, reply_markup=InlineKeyboardMarkup(horas_buttons), parse_mode="Markdown")
+        await update.message.reply_text(texto, reply_markup=InlineKeyboardMarkup(horas_buttons))
 
 # --- ASISTENTE DE REUNIONES INTERACTIVO ---
 async def agenda_reunion(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -151,15 +151,13 @@ async def agenda_reunion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if update.callback_query:
         await update.callback_query.edit_message_text(
-            "📅 **Asistente de Reuniones:**\n\n¿Qué tipo de reunión querés agendar?",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown"
+            "📅 Asistente de Reuniones:\n\n¿Qué tipo de reunión querés agendar?",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
     else:
         await update.message.reply_text(
-            "📅 **Asistente de Reuniones:**\n\n¿Qué tipo de reunión querés agendar?",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown"
+            "📅 Asistente de Reuniones:\n\n¿Qué tipo de reunión querés agendar?",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
 async def listar_reuniones(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -168,12 +166,12 @@ async def listar_reuniones(update: Update, context: ContextTypes.DEFAULT_TYPE):
         texto = "📅 No tenés reuniones agendadas por el momento."
     else:
         reuniones_list = user_data_store[user_id]["reuniones"]
-        texto = "📅 **Tus reuniones programadas:**\n\n" + "".join([f"• {r}\n" for r in reuniones_list])
+        texto = "📅 Tus reuniones programadas:\n\n" + "".join([f"• {r}\n" for r in reuniones_list])
     
     if update.callback_query:
-        await update.callback_query.edit_message_text(texto, parse_mode="Markdown")
+        await update.callback_query.edit_message_text(texto)
     else:
-        await update.message.reply_text(texto, parse_mode="Markdown")
+        await update.message.reply_text(texto)
 
 # --- ACCIONES COTIDIANAS ---
 async def accion_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -188,9 +186,8 @@ async def accion_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not texto:
         await update.message.reply_text(
             "⚠️ Indicá la acción. Ejemplo:\n"
-            "`/accion Cerré la puerta de casa` o preguntá por algo.\n"
-            "También podés pedir un resumen escribiendo `/accion resumen`",
-            parse_mode="Markdown"
+            "/accion Cerré la puerta de casa o preguntá por algo.\n"
+            "También podés pedir un resumen escribiendo /accion resumen"
         )
         return
 
@@ -199,7 +196,7 @@ async def accion_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("📋 No tenés acciones registradas todavía en el día.")
             return
         resumen_str = "\n".join([f"• {a['accion']} (a las {a['hora']})" for a in acciones_usuario])
-        await update.message.reply_text(f"📋 **Resumen de tus acciones de hoy:**\n\n{resumen_str}", parse_mode="Markdown")
+        await update.message.reply_text(f"📋 Resumen de tus acciones de hoy:\n\n{resumen_str}")
         return
 
     if "?" in texto or texto.lower().startswith("¿") or "hice" in texto.lower() or "cerré" in texto.lower() or "apagué" in texto.lower():
@@ -209,8 +206,9 @@ async def accion_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 encontrada = acc
                 break
         
+        user_name = update.effective_user.first_name
         if encontrada:
-            await update.message.reply_text(f"¡Siii, Sasha! Registré que **{encontrada['accion']}** a las **{encontrada['hora']} hs**.", parse_mode="Markdown")
+            await update.message.reply_text(f"¡Siii, {user_name}! Registré que {encontrada['accion']} a las {encontrada['hora']} hs.")
         else:
             keyboard = [[InlineKeyboardButton("Sí, ver resumen", callback_data="ver_resumen_acciones"),
                          InlineKeyboardButton("No", callback_data="no_resumen")]]
@@ -221,21 +219,21 @@ async def accion_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         hora_actual = datetime.datetime.now().strftime("%H:%M")
         acciones_usuario.append({"accion": texto, "hora": hora_actual})
-        await update.message.reply_text(f"✅ **¡Acción guardada!**\nRegistré: *{texto}* a las *{hora_actual} hs*.", parse_mode="Markdown")
+        await update.message.reply_text(f"✅ ¡Acción guardada!\nRegistré: {texto} a las {hora_actual} hs.")
 
 # --- LISTAS Y TAREAS ---
 async def nota_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     texto_nota = " ".join(context.args)
     if not texto_nota:
-        await update.message.reply_text("⚠️ Escribí la nota. Ejemplo: `/nota Comprar regalo`", parse_mode="Markdown")
+        await update.message.reply_text("⚠️ Escribí la nota. Ejemplo: /nota Comprar regalo")
         return
     if user_id not in user_data_store:
         user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "notas": []}
     if "notas" not in user_data_store[user_id]:
         user_data_store[user_id]["notas"] = []
     user_data_store[user_id]["notas"].append(texto_nota)
-    await update.message.reply_text(f"📌 **Nota guardada:** {texto_nota}", parse_mode="Markdown")
+    await update.message.reply_text(f"📌 Nota guardada: {texto_nota}")
 
 async def lista_notas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -243,17 +241,17 @@ async def lista_notas(update: Update, context: ContextTypes.DEFAULT_TYPE):
         texto = "📂 No tenés notas guardadas recientemente."
     else:
         notas_list = user_data_store[user_id]["notas"]
-        texto = "📂 **Tus notas guardadas:**\n\n" + "".join([f"• {n}\n" for n in notas_list])
+        texto = "📂 Tus notas guardadas:\n\n" + "".join([f"• {n}\n" for n in notas_list])
     
     if update.callback_query:
-        await update.callback_query.edit_message_text(texto, parse_mode="Markdown")
+        await update.callback_query.edit_message_text(texto)
     else:
-        await update.message.reply_text(texto, parse_mode="Markdown")
+        await update.message.reply_text(texto)
 
 async def lista_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if len(context.args) < 2:
-        await update.message.reply_text("⚠️ Formato: `/lista [categoría] [texto]`\nEjemplo: `/lista supermercado Pan y leche`", parse_mode="Markdown")
+        await update.message.reply_text("⚠️ Formato: /lista [categoría] [texto]\nEjemplo: /lista supermercado Pan y leche")
         return
     
     categoria = context.args[0].lower()
@@ -266,7 +264,7 @@ async def lista_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data_store[user_id]["listas"][categoria] = []
     
     user_data_store[user_id]["listas"][categoria].append(item)
-    await update.message.reply_text(f"📌 Agregado a la lista **{categoria.upper()}**: {item}", parse_mode="Markdown")
+    await update.message.reply_text(f"📌 Agregado a la lista {categoria.upper()}: {item}")
 
 async def ver_listas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -274,14 +272,14 @@ async def ver_listas(update: Update, context: ContextTypes.DEFAULT_TYPE):
         texto = "📂 No tenés listas guardadas."
     else:
         listas = user_data_store[user_id]["listas"]
-        texto = "📂 **Tus Listas:**\n"
+        texto = "📂 Tus Listas:\n"
         for cat, items in listas.items():
-            texto += f"\n🏷 **{cat.upper()}**\n" + "".join([f"  • {i}\n" for i in items])
+            texto += f"\n🏷 {cat.upper()}\n" + "".join([f"  • {i}\n" for i in items])
     
     if update.callback_query:
-        await update.callback_query.edit_message_text(texto, parse_mode="Markdown")
+        await update.callback_query.edit_message_text(texto)
     else:
-        await update.message.reply_text(texto, parse_mode="Markdown")
+        await update.message.reply_text(texto)
 
 async def tareas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -289,23 +287,23 @@ async def tareas(update: Update, context: ContextTypes.DEFAULT_TYPE):
         texto = "📝 No tenés tareas pendientes."
     else:
         t_list = user_data_store[user_id]["tareas"]
-        texto = "📝 **Tus tareas pendientes:**\n\n" + "".join([f"• {t}\n" for t in t_list])
+        texto = "📝 Tus tareas pendientes:\n\n" + "".join([f"• {t}\n" for t in t_list])
     
     if update.callback_query:
-        await update.callback_query.edit_message_text(texto, parse_mode="Markdown")
+        await update.callback_query.edit_message_text(texto)
     else:
-        await update.message.reply_text(texto, parse_mode="Markdown")
+        await update.message.reply_text(texto)
 
 async def nueva_tarea(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     texto_tarea = " ".join(context.args)
     if not texto_tarea:
-        await update.message.reply_text("⚠️ Escribí la tarea. Ejemplo: `/nueva_tarea Reunión scout`", parse_mode="Markdown")
+        await update.message.reply_text("⚠️ Escribí la tarea. Ejemplo: /nueva_tarea Reunión scout")
         return
     if user_id not in user_data_store:
         user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": []}
     user_data_store[user_id]["tareas"].append(texto_tarea)
-    await update.message.reply_text(f"➕ **Tarea agregada:** {texto_tarea}", parse_mode="Markdown")
+    await update.message.reply_text(f"➕ Tarea agregada: {texto_tarea}")
 
 async def completada(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Seleccioná o indicá la tarea finalizada.")
@@ -332,7 +330,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await lista_notas(update, context)
         return
     elif data == "menu_acciones":
-        await query.edit_message_text("⚡ Para registrar una acción escribí por ejemplo:\n`/accion Cerré la puerta`\nPara ver el resumen escribí:\n`/accion resumen`", parse_mode="Markdown")
+        await query.edit_message_text("⚡ Para registrar una acción escribí por ejemplo:\n/accion Cerré la puerta\nPara ver el resumen escribí:\n/accion resumen")
         return
     elif data == "menu_config":
         await configuracion(update, context)
@@ -350,7 +348,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("05 min", callback_data="cfg_m_05"), InlineKeyboardButton("10 min", callback_data="cfg_m_10"), InlineKeyboardButton("20 min", callback_data="cfg_m_20"), InlineKeyboardButton("25 min", callback_data="cfg_m_25")],
             [InlineKeyboardButton("35 min", callback_data="cfg_m_35"), InlineKeyboardButton("40 min", callback_data="cfg_m_40"), InlineKeyboardButton("50 min", callback_data="cfg_m_50"), InlineKeyboardButton("55 min", callback_data="cfg_m_55")]
         ]
-        await query.edit_message_text(f"⚙️ Hora seleccionada: **{h_str} hs**. Ahora seleccioná los **minutos**:", reply_markup=InlineKeyboardMarkup(min_buttons), parse_mode="Markdown")
+        await query.edit_message_text(f"⚙️ Hora seleccionada: {h_str} hs. Ahora seleccioná los minutos:", reply_markup=InlineKeyboardMarkup(min_buttons))
         return
 
     elif data.startswith("cfg_m_"):
@@ -378,7 +376,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if fila:
                 horas_buttons.append(fila)
 
-            await query.edit_message_text(f"✅ Horario Semanal guardado (**{nueva_hora} hs**).\n\n⚙️ **Paso 2/2:** Seleccioná la hora para el **Horario Fin de Semana**:", reply_markup=InlineKeyboardMarkup(horas_buttons), parse_mode="Markdown")
+            await query.edit_message_text(f"✅ Horario Semanal guardado ({nueva_hora} hs).\n\n⚙️ Paso 2/2: Seleccioná la hora para el Horario Fin de Semana:", reply_markup=InlineKeyboardMarkup(horas_buttons))
             return
         else:
             user_data_store[user_id]["hora_fin_de_semana"] = nueva_hora
@@ -408,22 +406,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
             
             resumen_texto = (
-                "🎉 **¡Configuración completada con éxito!**\n\n"
-                f"• Lunes a Viernes: **{h_sem_str} hs**\n"
-                f"• Fines de semana: **{h_fin_str} hs**\n\n"
+                "🎉 ¡Configuración completada con éxito!\n\n"
+                f"• Lunes a Viernes: {h_sem_str} hs\n"
+                f"• Fines de semana: {h_fin_str} hs\n\n"
                 "Ya podés utilizar el menú principal:"
             )
-            await query.edit_message_text(resumen_texto, reply_markup=InlineKeyboardMarkup(menu_keyboard), parse_mode="Markdown")
+            await query.edit_message_text(resumen_texto, reply_markup=InlineKeyboardMarkup(menu_keyboard))
             return
 
     # Asistente de reuniones
     if data == "reunion_presencial" or data == "reunion_virtual":
         tipo = "Presencial" if data == "reunion_presencial" else "Virtual"
         reunion_temp_state[user_id] = {"tipo": tipo, "step": "titulo"}
-        await query.edit_message_text(
-            f"📝 **Reunión {tipo}**\n\nPor favor, escribí el **título** de la reunión:",
-            parse_mode="Markdown"
-        )
+        await query.edit_message_text(f"📝 Reunión {tipo}\n\nPor favor, escribí el título de la reunión:")
     elif data.startswith("anio_"):
         anio = data.replace("anio_", "")
         reunion_temp_state[user_id]["anio"] = anio
@@ -435,7 +430,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("Julio", callback_data="mes_07"), InlineKeyboardButton("Agosto", callback_data="mes_08"), InlineKeyboardButton("Septiembre", callback_data="mes_09")],
             [InlineKeyboardButton("Octubre", callback_data="mes_10"), InlineKeyboardButton("Noviembre", callback_data="mes_11"), InlineKeyboardButton("Diciembre", callback_data="mes_12")]
         ]
-        await query.edit_message_text("📅 Seleccioná el **mes** de la reunión:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await query.edit_message_text("📅 Seleccioná el mes de la reunión:", reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif data.startswith("mes_"):
         mes = data.replace("mes_", "")
@@ -453,7 +448,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if fila_actual:
             dias_buttons.append(fila_actual)
 
-        await query.edit_message_text("📅 Seleccioná el **día** de la reunión:", reply_markup=InlineKeyboardMarkup(dias_buttons), parse_mode="Markdown")
+        await query.edit_message_text("📅 Seleccioná el día de la reunión:", reply_markup=InlineKeyboardMarkup(dias_buttons))
 
     elif data.startswith("dia_"):
         dia = data.replace("dia_", "")
@@ -471,7 +466,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if fila:
             horas_reunion.append(fila)
 
-        await query.edit_message_text("⏰ Seleccioná la **hora** de la reunión:", reply_markup=InlineKeyboardMarkup(horas_reunion), parse_mode="Markdown")
+        await query.edit_message_text("⏰ Seleccioná la hora de la reunión:", reply_markup=InlineKeyboardMarkup(horas_reunion))
 
     elif data.startswith("reu_h_"):
         h_str = data.replace("reu_h_", "")
@@ -483,7 +478,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("05 min", callback_data="reu_m_05"), InlineKeyboardButton("10 min", callback_data="reu_m_10"), InlineKeyboardButton("20 min", callback_data="reu_m_20"), InlineKeyboardButton("25 min", callback_data="reu_m_25")],
             [InlineKeyboardButton("35 min", callback_data="reu_m_35"), InlineKeyboardButton("40 min", callback_data="reu_m_40"), InlineKeyboardButton("50 min", callback_data="reu_m_50"), InlineKeyboardButton("55 min", callback_data="reu_m_55")]
         ]
-        await query.edit_message_text(f"⏰ Hora: **{h_str} hs**. Seleccioná los **minutos**:", reply_markup=InlineKeyboardMarkup(min_reunion), parse_mode="Markdown")
+        await query.edit_message_text(f"⏰ Hora: {h_str} hs. Seleccioná los minutos:", reply_markup=InlineKeyboardMarkup(min_reunion))
         return
 
     elif data.startswith("reu_m_"):
@@ -496,8 +491,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tipo = state.get("tipo")
         state["step"] = "lugar_link"
 
-        prompt_texto = "📍 Ingresá la **dirección o lugar** de la reunión:" if tipo == "Presencial" else "💻 Ingresá el **link** de la reunión:"
-        await query.edit_message_text(prompt_texto, parse_mode="Markdown")
+        prompt_texto = "📍 Ingresá la dirección o lugar de la reunión:" if tipo == "Presencial" else "💻 Ingresá el link de la reunión:"
+        await query.edit_message_text(prompt_texto)
         return
 
     elif data == "ver_resumen_acciones":
@@ -506,7 +501,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("📋 No hay acciones registradas hoy.")
             return
         resumen_str = "\n".join([f"• {a['accion']} (a las {a['hora']})" for a in acciones])
-        await query.edit_message_text(f"📋 **Resumen de tus acciones de hoy:**\n\n{resumen_str}", parse_mode="Markdown")
+        await query.edit_message_text(f"📋 Resumen de tus acciones de hoy:\n\n{resumen_str}")
     elif data == "no_resumen":
         await query.edit_message_text("👍 ¡Entendido!")
 
@@ -530,9 +525,8 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 [InlineKeyboardButton("2026", callback_data="anio_2026"), InlineKeyboardButton("2027", callback_data="anio_2027")]
             ]
             await update.message.reply_text(
-                "📅 Seleccioná el **año** de la reunión:",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode="Markdown"
+                "📅 Seleccioná el año de la reunión:",
+                reply_markup=InlineKeyboardMarkup(keyboard)
             )
             return
 
@@ -556,10 +550,9 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             del reunion_temp_state[user_id]
 
             await update.message.reply_text(
-                f"✅ **¡Reunión {tipo.lower()} agendada con éxito!**\n\n"
-                f"📌 **{titulo}**\n📅 Fecha: {fecha_formateada} a las {hora} hs\n📍 Detalle: {ubicacion_o_link}\n\n"
-                "*(Sincronizado con Google Calendar)*",
-                parse_mode="Markdown"
+                f"✅ ¡Reunión {tipo.lower()} agendada con éxito!\n\n"
+                f"📌 {titulo}\n📅 Fecha: {fecha_formateada} a las {hora} hs\n📍 Detalle: {ubicacion_o_link}\n\n"
+                "(Sincronizado con Google Calendar)"
             )
             return
 
