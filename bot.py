@@ -16,12 +16,12 @@ logging.basicConfig(
 
 TOKEN = "9006959123:AAGwA8wE4vhFi8-tv0bUvFAnnLnfyi2ZCXQ"
 
-# --- SERVIDOR WEB PARA CUMPLIR CON RENDER ---
+# --- SERVIDOR WEB OBLIGATORIO PARA RENDER ---
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"@SoyOrganizabot activo y funcionando!")
+        self.wfile.write(b"@SoyOrganizabot activo y funcionando en Render!")
     
     def log_message(self, format, *args):
         return
@@ -29,6 +29,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
 def run_web_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(('0.0.0.0', port), SimpleHandler)
+    print(f"🌐 Servidor web escuchando en el puerto {port}")
     server.serve_forever()
 
 # --- ALMACENAMIENTO EN MEMORIA POR USUARIO ---
@@ -344,7 +345,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reunion_temp_state[user_id]["anio"] = anio
         reunion_temp_state[user_id]["step"] = "mes"
         
-        # Botones de meses
         keyboard = [
             [InlineKeyboardButton("Enero", callback_data="mes_01"), InlineKeyboardButton("Febrero", callback_data="mes_02"), InlineKeyboardButton("Marzo", callback_data="mes_03")],
             [InlineKeyboardButton("Abril", callback_data="mes_04"), InlineKeyboardButton("Mayo", callback_data="mes_05"), InlineKeyboardButton("Junio", callback_data="mes_06")],
@@ -358,7 +358,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reunion_temp_state[user_id]["mes"] = mes
         reunion_temp_state[user_id]["step"] = "dia"
         
-        # Botones de días (bloques rápidos o días principales)
         keyboard = [
             [InlineKeyboardButton("1", callback_data="dia_01"), InlineKeyboardButton("5", callback_data="dia_05"), InlineKeyboardButton("10", callback_data="dia_10"), InlineKeyboardButton("15", callback_data="dia_15")],
             [InlineKeyboardButton("17", callback_data="dia_17"), InlineKeyboardButton("20", callback_data="dia_20"), InlineKeyboardButton("25", callback_data="dia_25"), InlineKeyboardButton("30", callback_data="dia_30")]
@@ -370,7 +369,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reunion_temp_state[user_id]["dia"] = dia
         reunion_temp_state[user_id]["step"] = "hora"
         
-        # Botones de hora
         keyboard = [
             [InlineKeyboardButton("09:00", callback_data="hora_09:00"), InlineKeyboardButton("10:30", callback_data="hora_10:30"), InlineKeyboardButton("12:00", callback_data="hora_12:00")],
             [InlineKeyboardButton("15:00", callback_data="hora_15:00"), InlineKeyboardButton("17:00", callback_data="hora_17:00"), InlineKeyboardButton("19:00", callback_data="hora_19:00")],
@@ -405,7 +403,6 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("🎤 Recibí tu nota de voz. (Próximamente transcripción automática integrada). Por ahora podés usar los comandos.")
         return
 
-    # Manejo del flujo interactivo de reuniones
     if user_id in reunion_temp_state:
         state = reunion_temp_state[user_id]
         step = state.get("step")
@@ -414,7 +411,6 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             state["titulo"] = text
             state["step"] = "anio"
             
-            # Botones de Años
             keyboard = [
                 [InlineKeyboardButton("2026", callback_data="anio_2026"), InlineKeyboardButton("2027", callback_data="anio_2027")]
             ]
@@ -453,31 +449,8 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             return
 
 def main():
+    # 1. ARRANCAR EL SERVIDOR WEB PRIMERO (Vital para Render)
     server_thread = threading.Thread(target=run_web_server, daemon=True)
     server_thread.start()
 
-    app = ApplicationBuilder().token(TOKEN).build()
-
-    # Registro de comandos
-    app.add_handler(CommandHandler("start", iniciar))
-    app.add_handler(CommandHandler("iniciar", iniciar))
-    app.add_handler(CommandHandler("ayuda", ayuda))
-    app.add_handler(CommandHandler("configuracion", configuracion))
-    app.add_handler(CommandHandler("hora_semana", set_hora_semana))
-    app.add_handler(CommandHandler("hora_finde", set_hora_finde))
-    app.add_handler(CommandHandler("Agenda_reunion", agenda_reunion))
-    app.add_handler(CommandHandler("reuniones", listar_reuniones))
-    app.add_handler(CommandHandler("accion", accion_cmd))
-    app.add_handler(CommandHandler("lista", lista_cmd))
-    app.add_handler(CommandHandler("ver_listas", ver_listas))
-    app.add_handler(CommandHandler("tareas", tareas))
-    app.add_handler(CommandHandler("nueva_tarea", nueva_tarea))
-    app.add_handler(CommandHandler("completada", completada))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.VOICE | filters.TEXT & ~filters.COMMAND, handle_voice_or_text))
-
-    print("🚀 ¡@SoyOrganizabot con selector interactivo de fecha y hora listo!")
-    app.run_polling()
-
-if __name__ == '__main__':
-    main()
+    #
