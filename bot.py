@@ -485,4 +485,26 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 f"✅ ¡Reunión agendada en **tu Google Calendar** personal!\n\n"
                 f"📌 {titulo}\n📅 {fecha_formateada} a las {hora} hs\n📍 {ubicacion_o_link}"
             )
-            return
+            return def main():
+    web_thread = threading.Thread(target=run_web_server, daemon=True)
+    web_thread.start()
+
+    app = ApplicationBuilder().token(TOKEN).build()
+    
+    app.add_handler(CommandHandler(["start", "iniciar"], iniciar))
+    app.add_handler(CommandHandler("conectar", conectar_google))
+    app.add_handler(CommandHandler(["agenda_reunion", "reuniones"], agenda_reunion))
+    app.add_handler(CommandHandler("tareas", tareas))
+    app.add_handler(CommandHandler("nueva_tarea", nueva_tarea))
+    app.add_handler(CommandHandler("nota", nota_cmd))
+    app.add_handler(CommandHandler("lista_notas", lista_notas))
+    
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.VOICE | filters.TEXT & ~filters.COMMAND, handle_voice_or_text))
+
+    print("🚀 @SoyOrganizabot con OAuth individual por usuario en marcha!")
+    app.run_polling()
+
+if __name__ == '__main__':
+    main()
+
