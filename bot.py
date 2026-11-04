@@ -460,4 +460,19 @@ def run_telegram_bot():
     app.add_handler(CommandHandler("agenda_reunion", agenda_reunion))
     app.add_handler(CommandHandler("reuniones", listar_reuniones))
     app.add_handler(CommandHandler("accion", accion_cmd))
-    app.
+    app.add_handler(CommandHandler("lista", lista_cmd))
+    app.add_handler(CommandHandler("ver_listas", ver_listas))
+    app.add_handler(CommandHandler("tareas", tareas))
+    app.add_handler(CommandHandler("nueva_tarea", nueva_tarea))
+    app.add_handler(CommandHandler("completada", completada))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.VOICE | filters.TEXT & ~filters.COMMAND, handle_voice_or_text))
+
+    print("🚀 ¡@SoyOrganizabot corriendo en hilo secundario!")
+    app.run_polling()
+
+if __name__ == '__main__':
+    bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
+    bot_thread.start()
+
+    run_web_server()
