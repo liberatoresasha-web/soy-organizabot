@@ -398,7 +398,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         state["hora"] = f"{h_str}:{m_str}"
         state["step"] = "lugar_link"
         tipo = state.get("tipo")
-        await query.edit_message_text("📍 Ingresá la dirección:" if tipo == "Presencial" else "💻 Ingresá el link de la reunión:")
+        prompt_texto = "📍 Ingresá la dirección:" if tipo == "Presencial" else "💻 Ingresá el link de la reunión:"
+        await query.edit_message_text(prompt_texto)
 
 # --- MANEJADOR DE TEXTO Y AUDIOS ---
 async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -441,5 +442,4 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         step = state.get("step")
 
         if step == "titulo":
-            state["titulo"] = text
-            state[
+            state
