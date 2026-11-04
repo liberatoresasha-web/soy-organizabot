@@ -108,7 +108,7 @@ class OAuthHandler(BaseHTTPRequestHandler):
                 credentials = flow.credentials
 
                 if user_id not in user_data_store:
-                    user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "notas": [], "config": {"semana": "09:00", "fin_semana": "10:00"}}
+                    user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": {}, "notas": [], "config": {"semana": "09:00", "fin_semana": "10:00"}}
                 
                 user_data_store[user_id]["google_creds"] = {
                     'token': credentials.token,
@@ -236,22 +236,24 @@ async def iniciar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     str_id = str(user.id)
     if str_id not in user_data_store:
         user_data_store[str_id] = {
-            "tareas": [], "listas": {}, "reuniones": [], "acciones": [], "notas": [],
+            "tareas": [], "listas": {}, "reuniones": [], "acciones": {}, "notas": [],
             "config": {"semana": "09:00", "fin_semana": "10:00"}
         }
         guardar_datos(user_data_store)
 
+    # Al iniciar /start, arranca directo en Configuración de Horarios (Punto 1)
     await configuracion_cmd(update, context)
 
 async def menu_principal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    # Orden exacto solicitado en el Punto 3
     keyboard = [
-        [InlineKeyboardButton("🔗 Vincular Google", callback_data="vincular_google")],
-        [InlineKeyboardButton("📝 Listas de Tareas", callback_data="menu_tareas_listas")],
+        [InlineKeyboardButton("📝 Tareas", callback_data="menu_tareas_listas")],
         [InlineKeyboardButton("➕ Nueva Tarea", callback_data="prompt_nueva_tarea")],
         [InlineKeyboardButton("📅 Reuniones", callback_data="menu_reuniones_lista")],
         [InlineKeyboardButton("⚡ Acción", callback_data="menu_accion")],
-        [InlineKeyboardButton("⚙️ Configuración de Horarios", callback_data="menu_config")]
+        [InlineKeyboardButton("⚙️ Configuración de Horarios", callback_data="menu_config")],
+        [InlineKeyboardButton("🔗 Vincular Google", callback_data="vincular_google")]
     ]
     texto = f"¡Hola, {user.first_name}! 🤖 Menú Principal de @SoyOrganizabot:\n\nSeleccioná una opción:"
     if update.callback_query:
@@ -303,7 +305,7 @@ async def configuracion_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "⚙️ **Configuración de Reportes y Horarios**\n\n"
         f"• Horario de Lunes a Viernes: *{config.get('semana')} hs*\n"
         f"• Horario de Fin de Semana (Sábados y Domingos): *{config.get('fin_semana')} hs*\n\n"
-        "Seleccioná qué horario querés modificar o ingresá al Menú Principal:"
+        "Seleccioná qué horario querés modificar:"
     )
     keyboard = [
         [InlineKeyboardButton("🕒 Cambiar Lunes a Viernes", callback_data="cfg_semana"),
@@ -317,9 +319,14 @@ async def configuracion_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(texto, reply_markup=markup, parse_mode="Markdown")
 
 async def accion_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    texto = "⚡ **Panel de Acciones Rápidas**\n\nSeleccioná una acción a ejecutar:"
+    # Lógica de acciones cotidianas (Punto 4)
+    texto = (
+        "⚡ **Panel de Acciones Cotidianas**\n\n"
+        "Podés registrar o consultar hábitos cotidianos (ej. *cerré la puerta*, *tomé la pastilla*).\n\n"
+        "Escribí directamente en el chat lo que hiciste o querés consultar (ej: *'¿Cerré la puerta?'* o *'Cerré la puerta'*):"
+    )
+    user_input_states[update.effective_user.id] = "esperando_accion"
     keyboard = [
-        [InlineKeyboardButton("➕ Nueva Tarea", callback_data="prompt_nueva_tarea")],
         [InlineKeyboardButton("📅 Agendar Reunión", callback_data="menu_agenda")],
         [InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]
     ]
@@ -397,7 +404,7 @@ async def nueva_tarea(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if str_id not in user_data_store:
-        user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "notas": []}
+        user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": {}, "notas": []}
     user_data_store[str_id]["tareas"].append(texto_tarea)
     guardar_datos(user_data_store)
     agregar_google_task(user_id, texto_tarea)
@@ -421,14 +428,18 @@ async def tareas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     listas = obtener_listas_google_tasks(user_id)
     if not listas:
         texto = "📝 No se encontraron listas en tu Google Tasks."
-        keyboard = [[InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]]
+        keyboard = [
+            [InlineKeyboardButton("➕ Nueva Tarea", callback_data="prompt_nueva_tarea")],
+            [InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]
+        ]
         markup = InlineKeyboardMarkup(keyboard)
     else:
         texto = "📝 **Tus Listas de Google Tasks:**\n\nSeleccioná una lista para ver sus tareas:"
         keyboard = []
         for lst in listas:
             keyboard.append([InlineKeyboardButton(f"📁 {lst.get('title')}", callback_data=f"ver_lista_{lst.get('id')}")])
-        keyboard.append([InlineKeyboardButton("➕ Crear Nueva Lista", callback_data="crear_nueva_lista")])
+        # Requerimiento Punto 3: Abajo botonera con Nueva Tarea y Menú Principal
+        keyboard.append([InlineKeyboardButton("➕ Nueva Tarea", callback_data="prompt_nueva_tarea")])
         keyboard.append([InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")])
         markup = InlineKeyboardMarkup(keyboard)
 
@@ -464,7 +475,7 @@ async def nota_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Escribí la nota. Ejemplo: /nota Comprar regalo")
         return
     if str_id not in user_data_store:
-        user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "notas": []}
+        user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": {}, "notas": []}
     user_data_store[str_id]["notas"].append(texto_nota)
     guardar_datos(user_data_store)
     await update.message.reply_text(f"📌 Nota guardada: {texto_nota}")
@@ -536,6 +547,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             texto = "📁 **Tareas en la lista:**\n\n" + "".join([f"• {t.get('title')}\n" for t in t_list])
         keyboard = [
+            [InlineKeyboardButton("➕ Nueva Tarea", callback_data="prompt_nueva_tarea")],
             [InlineKeyboardButton("⬅️ Volver a listas", callback_data="menu_tareas_listas")],
             [InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]
         ]
@@ -656,7 +668,7 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             if "tarea" in texto_transcrito.lower():
                 nueva_t = texto_transcrito.lower().replace("tarea", "").strip()
                 if str_id not in user_data_store:
-                    user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "notas": []}
+                    user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": {}, "notas": []}
                 user_data_store[str_id]["tareas"].append(nueva_t)
                 guardar_datos(user_data_store)
                 agregar_google_task(user_id, nueva_t)
@@ -671,27 +683,84 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     text = update.message.text
+    hoy_str = datetime.datetime.now().strftime("%Y-%m-%d")
 
     if user_id in user_input_states:
         estado_input = user_input_states[user_id]
         keyboard = [[InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]]
         
-        if estado_input == "esperando_hora_semana":
+        if estado_input == "esperando_accion":
+            del user_input_states[user_id]
+            texto_lower = text.lower()
+            if str_id not in user_data_store:
+                user_data_store[str_id] = {"acciones": {}}
+            if "acciones" not in user_data_store[str_id]:
+                user_data_store[str_id]["acciones"] = {}
+
+            # Verificamos si pregunta o registra
+            if "?" in text or "cerre" in texto_lower or "revise" in texto_lower or "tomé" in texto_lower:
+                # Es una consulta
+                clave_accion = texto_lower.replace("?", "").replace("¿", "").replace("el", "").replace("la", "").strip()
+                encontrada = False
+                hora_reg = ""
+                for acc, fecha_hora in user_data_store[str_id]["acciones"].items():
+                    if any(palabra in acc for palabra in clave_accion.split() if len(palabra) > 3):
+                        if fecha_hora.startswith(hoy_str):
+                            encontrada = True
+                            hora_reg = fecha_hora.split(" ")[1]
+                            break
+                
+                if encontrada:
+                    resp = f"Siii, registré '{clave_accion}' hoy a las {hora_reg} horas."
+                else:
+                    resp = f"Nooo, no he registrado esa acción hoy; la última vez no figura en el día de hoy."
+            else:
+                # Es un registro
+                ahora_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                user_data_store[str_id]["acciones"][texto_lower] = ahora_str
+                guardar_datos(user_data_store)
+                hora_actual = datetime.datetime.now().strftime("%H:%M")
+                resp = f"Siii, registré '{text}' hoy a las {hora_actual} hs. ✅"
+
+            await update.message.reply_text(resp, reply_markup=InlineKeyboardMarkup(keyboard))
+            return
+
+        elif estado_input == "esperando_hora_semana":
             del user_input_states[user_id]
             if str_id not in user_data_store:
                 user_data_store[str_id] = {"config": {}}
             user_data_store[str_id]["config"]["semana"] = text
             guardar_datos(user_data_store)
-            await update.message.reply_text(f"✅ Horario de Lunes a Viernes actualizado a: *{text} hs*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+            
+            # Encadenamos con el horario de fin de semana (Punto 1)
+            user_input_states[user_id] = "esperando_hora_finde"
+            await update.message.reply_text(
+                f"✅ Horario de Lunes a Viernes actualizado a: *{text} hs*\n\n"
+                "🕒 Ahora, escribí el nuevo horario para **Fin de Semana** (Sábados y Domingos, ej: 10:00):",
+                parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]]))
             return
+
         elif estado_input == "esperando_hora_finde":
             del user_input_states[user_id]
             if str_id not in user_data_store:
                 user_data_store[str_id] = {"config": {}}
             user_data_store[str_id]["config"]["fin_semana"] = text
             guardar_datos(user_data_store)
-            await update.message.reply_text(f"✅ Horario de Fin de Semana actualizado a: *{text} hs*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+
+            config = user_data_store[str_id]["config"]
+            resumen_msg = (
+                "⚙️ **¡Configuración Actualizada con Éxito!**\n\n"
+                f"• Horario Lunes a Viernes: *{config.get('semana')} hs*\n"
+                f"• Horario Fin de Semana: *{config.get('fin_semana')} hs*\n\n"
+                "Ya podés avanzar y vincular tu cuenta de Google si aún no lo hiciste:"
+            )
+            keyboard_post_config = [
+                [InlineKeyboardButton("🔗 Vincular Google", callback_data="vincular_google")],
+                [InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]
+            ]
+            await update.message.reply_text(resumen_msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard_post_config))
             return
+
         elif estado_input == "esperando_texto_tarea":
             del user_input_states[user_id]
             agregar_google_task(user_id, text)
@@ -735,7 +804,7 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             fecha_formateada = f"{anio}-{mes}-{dia}"
 
             if str_id not in user_data_store:
-                user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "notas": []}
+                user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": {}, "notas": []}
             
             reunion_obj = {
                 "titulo": titulo,
@@ -781,7 +850,7 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.VOICE | filters.TEXT & ~filters.COMMAND, handle_voice_or_text))
 
-    print("🚀 @SoyOrganizabot con inicio en configuración y menú principal en marcha!")
+    print("🚀 @SoyOrganizabot con flujos y acciones cotidianas optimizados en marcha!")
     app.run_polling()
 
 if __name__ == '__main__':
