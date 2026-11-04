@@ -250,6 +250,24 @@ async def lista_notas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(texto, parse_mode="Markdown")
 
+async def lista_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if len(context.args) < 2:
+        await update.message.reply_text("⚠️ Formato: `/lista [categoría] [texto]`\nEjemplo: `/lista supermercado Pan y leche`", parse_mode="Markdown")
+        return
+    
+    categoria = context.args[0].lower()
+    item = " ".join(context.args[1:])
+
+    if user_id not in user_data_store:
+        user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": []}
+    
+    if categoria not in user_data_store[user_id]["listas"]:
+        user_data_store[user_id]["listas"][categoria] = []
+    
+    user_data_store[user_id]["listas"][categoria].append(item)
+    await update.message.reply_text(f"📌 Agregado a la lista **{categoria.upper()}**: {item}", parse_mode="Markdown")
+
 async def tareas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in user_data_store or not user_data_store[user_id]["tareas"]:
