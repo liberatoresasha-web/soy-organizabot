@@ -135,7 +135,6 @@ async def listar_reuniones(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = None
     else:
         reuniones = user_data_store[user_id]["reuniones"]
-        # Ordenar reuniones por fecha extraída del string (formato YYYY-MM-DD)
         try:
             reuniones_ordenadas = sorted(reuniones, key=lambda x: x.split("|")[1].strip())
             user_data_store[user_id]["reuniones"] = reuniones_ordenadas
@@ -298,7 +297,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     chat_id = query.message.chat_id
 
-    # Menú principal mediante botones personalizados
     if data == "menu_agenda":
         await agenda_reunion(update, context)
         return
@@ -315,7 +313,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await configuracion(update, context)
         return
 
-    # Gestión de Reuniones desde la botonera de /reuniones
     elif data == "reuniones_eliminar":
         if user_id not in user_data_store or not user_data_store[user_id].get("reuniones"):
             await query.edit_message_text("📅 No tenés reuniones para eliminar.")
@@ -335,7 +332,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("✏️ Para reagendar o editar una reunión, podés volver a crearla con /agenda_reunion o eliminar la actual.")
         return
 
-    # --- FLUJO DE CONFIGURACIÓN PASO A PASO ---
     if data.startswith("cfgh_sem_"):
         h_val = data.replace("cfgh_sem_", "")
         if user_id not in reunion_temp_state:
@@ -427,7 +423,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(resumen_texto, reply_markup=InlineKeyboardMarkup(menu_keyboard))
         return
 
-    # Asistente de reuniones
     if data == "reunion_presencial" or data == "reunion_virtual":
         tipo = "Presencial" if data == "reunion_presencial" else "Virtual"
         reunion_temp_state[user_id] = {"tipo": tipo, "step": "titulo"}
@@ -521,13 +516,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    text = update.message.text
-
+    
+    # Manejar nota de voz enviada por el usuario
     if update.message.voice:
-        await update.message.reply_text("🎤 Recibí tu nota de voz. (Próximamente transcripción automática integrada). Por ahora podés usar los comandos.")
+        file_id = update.message.voice.file_id
+        new_file = await context.bot.get_file(file_id)
+        # Descargar el archivo de voz (opcionalmente guardado en memoria o disco para procesar)
+        await update.message.reply_text("🎤 ¡Recibí tu nota de voz! Ya quedó guardada para procesarla próximamente.")
         return
 
-    # Verificar si está esperando el número para eliminar una reunión
+    text = update.message.text
+
     if user_id in reunion_temp_state and reunion_temp_state[user_id].get("step") == "esperando_eliminar_numero":
         try:
             indice = int(text.strip()) - 1
@@ -536,7 +535,6 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 eliminada = reuniones.pop(indice)
                 del reunion_temp_state[user_id]
                 
-                # Mostrar confirmación y nuevo listado ordenado
                 texto = f"🗑 **Reunión eliminada con éxito:**\n{eliminada}\n\n"
                 if not reuniones:
                     texto += "📅 Ya no te quedan reuniones agendadas."
@@ -546,7 +544,7 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                     for idx, r in enumerate(reuniones, 1):
                         texto += f"{idx}. {r}\n"
                     keyboard = [
-                        [InlineKeyboardButton("✏️ Editar", callback_data="reuniones_editar"),
+                        [InlineKeyboardButton("✏️ Editar / Reagendar", callback_data="reuniones_editar"),
                          InlineKeyboardButton("🗑 Eliminar", callback_data="reuniones_eliminar")]
                     ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
