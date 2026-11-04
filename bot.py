@@ -116,25 +116,26 @@ async def configuracion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id not in user_data_store:
         user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "hora_semana": "08:00", "hora_fin_de_semana": "10:00"}
 
-    reunion_temp_state[user_id] = {"cfg_tipo": "sem"}
+    # Paso 1: Configurar hora semanal
+    reunion_temp_state[user_id] = {"step": "cfg_sem_hora"}
     
     horas_buttons = []
     fila = []
     for h in range(24):
         h_str = f"{h:02d}"
-        fila.append(InlineKeyboardButton(f"{h_str} hs", callback_data=f"cfg_h_{h_str}"))
+        fila.append(InlineKeyboardButton(f"{h_str} hs", callback_data=f"cfgh_sem_{h_str}"))
         if len(fila) == 6:
             horas_buttons.append(fila)
             fila = []
     if fila:
         horas_buttons.append(fila)
 
-    texto = "⚙️ Paso 1/2: Seleccioná la hora para el Horario Semanal (Lunes a Viernes):"
+    texto = "⚙️ **Paso 1/4:** Seleccioná la hora para el **Horario Semanal (Lunes a Viernes)**:"
     
     if update.callback_query:
-        await update.callback_query.edit_message_text(texto, reply_markup=InlineKeyboardMarkup(horas_buttons))
+        await update.callback_query.edit_message_text(texto, reply_markup=InlineKeyboardMarkup(horas_buttons), parse_mode="Markdown")
     else:
-        await update.message.reply_text(texto, reply_markup=InlineKeyboardMarkup(horas_buttons))
+        await update.message.reply_text(texto, reply_markup=InlineKeyboardMarkup(horas_buttons), parse_mode="Markdown")
 
 async def agenda_reunion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -310,7 +311,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     chat_id = query.message.chat_id
 
-    # Menú principal mediante botones personalizados con los nombres exactos pedidos
+    # Menú principal mediante botones personalizados
     if data == "menu_agenda":
         await agenda_reunion(update, context)
         return
@@ -327,88 +328,114 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await configuracion(update, context)
         return
 
-    # Selección de Hora (Horario Semanal o Fin de Semana)
-    if data.startswith("cfg_h_"):
-        h_str = data.replace("cfg_h_", "")
+    # --- FLUJO DE CONFIGURACIÓN PASO A PASO ---
+    
+    # 1. Seleccionó hora semanal
+    if data.startswith("cfgh_sem_"):
+        h_val = data.replace("cfgh_sem_", "")
         if user_id not in reunion_temp_state:
             reunion_temp_state[user_id] = {}
-        reunion_temp_state[user_id]["cfg_h"] = h_str
+        reunion_temp_state[user_id]["sem_h"] = h_val
+        reunion_temp_state[user_id]["step"] = "cfg_sem_min"
 
+        # Minutos ordenados cronológicamente
         min_buttons = [
-            [InlineKeyboardButton("00 min", callback_data="cfg_m_00"), InlineKeyboardButton("15 min", callback_data="cfg_m_15"), InlineKeyboardButton("30 min", callback_data="cfg_m_30"), InlineKeyboardButton("45 min", callback_data="cfg_m_45")],
-            [InlineKeyboardButton("05 min", callback_data="cfg_m_05"), InlineKeyboardButton("10 min", callback_data="cfg_m_10"), InlineKeyboardButton("20 min", callback_data="cfg_m_20"), InlineKeyboardButton("25 min", callback_data="cfg_m_25")],
-            [InlineKeyboardButton("35 min", callback_data="cfg_m_35"), InlineKeyboardButton("40 min", callback_data="cfg_m_40"), InlineKeyboardButton("50 min", callback_data="cfg_m_50"), InlineKeyboardButton("55 min", callback_data="cfg_m_55")]
+            [InlineKeyboardButton("00 min", callback_data="cfgm_sem_00"), InlineKeyboardButton("15 min", callback_data="cfgm_sem_15")],
+            [InlineKeyboardButton("30 min", callback_data="cfgm_sem_30"), InlineKeyboardButton("45 min", callback_data="cfgm_sem_45")]
         ]
-        await query.edit_message_text(f"⚙️ Hora seleccionada: {h_str} hs. Ahora seleccioná los minutos:", reply_markup=InlineKeyboardMarkup(min_buttons))
+        await query.edit_message_text(f"⚙️ Hora semanal seleccionada: {h_val} hs.\n\n**Paso 2/4:** Seleccioná los minutos:", reply_markup=InlineKeyboardMarkup(min_buttons), parse_mode="Markdown")
         return
 
-    # Selección de Minutos (Maneja inteligentemente si es Semanal o Fin de Semana)
-    elif data.startswith("cfg_m_"):
-        m_str = data.replace("cfg_m_", "")
+    # 2. Seleccionó minutos semanales -> Pasa a hora fin de semana
+    elif data.startswith("cfgm_sem_"):
+        m_val = data.replace("cfgm_sem_", "")
         if user_id not in reunion_temp_state:
-            reunion_temp_state[user_id] = {"cfg_tipo": "sem"}
+            reunion_temp_state[user_id] = {}
+        reunion_temp_state[user_id]["sem_m"] = m_val
         
-        state = reunion_temp_state[user_id]
-        tipo_cfg = state.get("cfg_tipo", "sem")
-        h_str = state.get("cfg_h", "08")
-        nueva_hora = f"{h_str}:{m_str}"
+        h_sem = reunion_temp_state[user_id].get("sem_h", "08")
+        if user_id not in user_data_store:
+            user_data_store[user_id] = {}
+        user_data_store[user_id]["hora_semana"] = f"{h_sem}:{m_val}"
+
+        reunion_temp_state[user_id]["step"] = "cfg_fin_hora"
+        
+        horas_buttons = []
+        fila = []
+        for h in range(24):
+            h_str = f"{h:02d}"
+            fila.append(InlineKeyboardButton(f"{h_str} hs", callback_data=f"cfgh_fin_{h_str}"))
+            if len(fila) == 6:
+                horas_buttons.append(fila)
+                fila = []
+        if fila:
+            horas_buttons.append(fila)
+
+        await query.edit_message_text(f"✅ Horario Semanal guardado ({h_sem}:{m_val} hs).\n\n⚙️ **Paso 3/4:** Seleccioná la hora para el **Horario Fin de Semana**:", reply_markup=InlineKeyboardMarkup(horas_buttons), parse_mode="Markdown")
+        return
+
+    # 3. Seleccionó hora fin de semana
+    elif data.startswith("cfgh_fin_"):
+        h_val = data.replace("cfgh_fin_", "")
+        if user_id not in reunion_temp_state:
+            reunion_temp_state[user_id] = {}
+        reunion_temp_state[user_id]["fin_h"] = h_val
+        reunion_temp_state[user_id]["step"] = "cfg_fin_min"
+
+        min_buttons = [
+            [InlineKeyboardButton("00 min", callback_data="cfgm_fin_00"), InlineKeyboardButton("15 min", callback_data="cfgm_fin_15")],
+            [InlineKeyboardButton("30 min", callback_data="cfgm_fin_30"), InlineKeyboardButton("45 min", callback_data="cfgm_fin_45")]
+        ]
+        await query.edit_message_text(f"⚙️ Hora fin de semana seleccionada: {h_val} hs.\n\n**Paso 4/4:** Seleccioná los minutos:", reply_markup=InlineKeyboardMarkup(min_buttons), parse_mode="Markdown")
+        return
+
+    # 4. Seleccionó minutos fin de semana -> GUARDAR TODO Y MOSTRAR MENÚ DEFINITIVO
+    elif data.startswith("cfgm_fin_"):
+        m_val = data.replace("cfgm_fin_", "")
+        if user_id not in reunion_temp_state:
+            reunion_temp_state[user_id] = {}
+        
+        h_fin = reunion_temp_state[user_id].get("fin_h", "10")
+        hora_fin_completa = f"{h_fin}:{m_val}"
         
         if user_id not in user_data_store:
-            user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "hora_semana": "08:00", "hora_fin_de_semana": "10:00"}
-
-        if tipo_cfg == "sem":
-            user_data_store[user_id]["hora_semana"] = nueva_hora
-            # Cambiar estado a fin de semana para el próximo paso
-            reunion_temp_state[user_id]["cfg_tipo"] = "fin"
-            
-            horas_buttons = []
-            fila = []
-            for h in range(24):
-                h_str_val = f"{h:02d}"
-                fila.append(InlineKeyboardButton(f"{h_str_val} hs", callback_data=f"cfg_h_{h_str_val}"))
-                if len(fila) == 6:
-                    horas_buttons.append(fila)
-                    fila = []
-            if fila:
-                horas_buttons.append(fila)
-
-            await query.edit_message_text(f"✅ Horario Semanal guardado ({nueva_hora} hs).\n\n⚙️ Paso 2/2: Seleccioná la hora para el Horario Fin de Semana:", reply_markup=InlineKeyboardMarkup(horas_buttons))
-            return
-        else:
-            user_data_store[user_id]["hora_fin_de_semana"] = nueva_hora
-            
-            h_sem_str = user_data_store[user_id]["hora_semana"]
-            h_fin_str = nueva_hora
-            
-            for tipo_j, h_str_val in [("sem", h_sem_str), ("fin", h_fin_str)]:
-                p = h_str_val.split(":")
-                ht, mt = int(p[0]), int(p[1])
-                utc_h = (ht + 3) % 24
-                j_name = f"{user_id}_{tipo_j}"
-                for job in context.job_queue.get_jobs_by_name(j_name):
-                    job.schedule_removal()
-                context.job_queue.run_daily(
-                    enviar_reporte_matutino,
-                    time=datetime.time(hour=utc_h, minute=mt, second=0),
-                    chat_id=chat_id, user_id=user_id, name=j_name
-                )
-
-            # Menú principal con los nombres exactos y limpios pedidos por el usuario
-            menu_keyboard = [
-                [InlineKeyboardButton("Acciones", callback_data="menu_acciones"),
-                 InlineKeyboardButton("Tareas", callback_data="menu_tareas")],
-                [InlineKeyboardButton("Notas", callback_data="menu_notas"),
-                 InlineKeyboardButton("Agendar reunión", callback_data="menu_agenda")]
-            ]
-            
-            resumen_texto = (
-                "🎉 ¡Configuración completada con éxito!\n\n"
-                f"• Horario Semanal: {h_sem_str} hs\n"
-                f"• Horario Fin de Semana: {h_fin_str} hs\n\n"
-                "Ya podés utilizar el bot con las siguientes opciones:"
+            user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": []}
+        
+        user_data_store[user_id]["hora_fin_de_semana"] = hora_fin_completa
+        
+        h_sem_str = user_data_store[user_id].get("hora_semana", "08:00")
+        h_fin_str = hora_fin_completa
+        
+        # Programar tareas diarias
+        for tipo_j, h_str_val in [("sem", h_sem_str), ("fin", h_fin_str)]:
+            p = h_str_val.split(":")
+            ht, mt = int(p[0]), int(p[1])
+            utc_h = (ht + 3) % 24
+            j_name = f"{user_id}_{tipo_j}"
+            for job in context.job_queue.get_jobs_by_name(j_name):
+                job.schedule_removal()
+            context.job_queue.run_daily(
+                enviar_reporte_matutino,
+                time=datetime.time(hour=utc_h, minute=mt, second=0),
+                chat_id=chat_id, user_id=user_id, name=j_name
             )
-            await query.edit_message_text(resumen_texto, reply_markup=InlineKeyboardMarkup(menu_keyboard))
-            return
+
+        # Menú principal con los nombres exactos pedidos
+        menu_keyboard = [
+            [InlineKeyboardButton("Acciones", callback_data="menu_acciones"),
+             InlineKeyboardButton("Tareas", callback_data="menu_tareas")],
+            [InlineKeyboardButton("Notas", callback_data="menu_notas"),
+             InlineKeyboardButton("Agendar reunión", callback_data="menu_agenda")]
+        ]
+        
+        resumen_texto = (
+            "🎉 ¡Configuración completada con éxito!\n\n"
+            f"• Horario Semanal: {h_sem_str} hs\n"
+            f"• Horario Fin de Semana: {h_fin_str} hs\n\n"
+            "Ya podés utilizar el bot con las siguientes opciones:"
+        )
+        await query.edit_message_text(resumen_texto, reply_markup=InlineKeyboardMarkup(menu_keyboard))
+        return
 
     # Asistente de reuniones
     if data == "reunion_presencial" or data == "reunion_virtual":
@@ -470,9 +497,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reunion_temp_state[user_id]["step"] = "minuto_reunion"
 
         min_reunion = [
-            [InlineKeyboardButton("00 min", callback_data="reu_m_00"), InlineKeyboardButton("15 min", callback_data="reu_m_15"), InlineKeyboardButton("30 min", callback_data="reu_m_30"), InlineKeyboardButton("45 min", callback_data="reu_m_45")],
-            [InlineKeyboardButton("05 min", callback_data="reu_m_05"), InlineKeyboardButton("10 min", callback_data="reu_m_10"), InlineKeyboardButton("20 min", callback_data="reu_m_20"), InlineKeyboardButton("25 min", callback_data="reu_m_25")],
-            [InlineKeyboardButton("35 min", callback_data="reu_m_35"), InlineKeyboardButton("40 min", callback_data="reu_m_40"), InlineKeyboardButton("50 min", callback_data="reu_m_50"), InlineKeyboardButton("55 min", callback_data="reu_m_55")]
+            [InlineKeyboardButton("00 min", callback_data="reu_m_00"), InlineKeyboardButton("15 min", callback_data="reu_m_15")],
+            [InlineKeyboardButton("30 min", callback_data="reu_m_30"), InlineKeyboardButton("45 min", callback_data="reu_m_45")]
         ]
         await query.edit_message_text(f"⏰ Hora: {h_str} hs. Seleccioná los minutos:", reply_markup=InlineKeyboardMarkup(min_reunion))
         return
