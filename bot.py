@@ -268,6 +268,21 @@ async def lista_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data_store[user_id]["listas"][categoria].append(item)
     await update.message.reply_text(f"📌 Agregado a la lista **{categoria.upper()}**: {item}", parse_mode="Markdown")
 
+async def ver_listas(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in user_data_store or not user_data_store[user_id].get("listas"):
+        texto = "📂 No tenés listas guardadas."
+    else:
+        listas = user_data_store[user_id]["listas"]
+        texto = "📂 **Tus Listas:**\n"
+        for cat, items in listas.items():
+            texto += f"\n🏷 **{cat.upper()}**\n" + "".join([f"  • {i}\n" for i in items])
+    
+    if update.callback_query:
+        await update.callback_query.edit_message_text(texto, parse_mode="Markdown")
+    else:
+        await update.message.reply_text(texto, parse_mode="Markdown")
+
 async def tareas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in user_data_store or not user_data_store[user_id]["tareas"]:
