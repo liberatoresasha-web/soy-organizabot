@@ -456,4 +456,8 @@ def run_telegram_bot():
     app.add_handler(CommandHandler("ayuda", ayuda))
     app.add_handler(CommandHandler("configuracion", configuracion))
     app.add_handler(CommandHandler("hora_semana", set_hora_semana))
-    app.add_handler(CommandHandler("
+    app.add_handler(CommandHandler("hora_finde", set_hora_finde))
+    app.add_handler(CommandHandler("agenda_reunion", agenda_reunion))
+    app.add_handler(CommandHandler("reuniones", listar_reuniones))
+    app.add_handler(CommandHandler("accion", accion_cmd))
+    app.
