@@ -16,12 +16,12 @@ logging.basicConfig(
 
 TOKEN = "9006959123:AAGwA8wE4vhFi8-tv0bUvFAnnLnfyi2ZCXQ"
 
-# --- SERVIDOR WEB OBLIGATORIO PARA RENDER (HILO PRINCIPAL) ---
+# --- SERVIDOR WEB PARA CUMPLIR CON RENDER ---
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"@SoyOrganizabot activo y funcionando en Render!")
+        self.wfile.write(b"@SoyOrganizabot activo y funcionando!")
     
     def log_message(self, format, *args):
         return
@@ -29,7 +29,6 @@ class SimpleHandler(BaseHTTPRequestHandler):
 def run_web_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(('0.0.0.0', port), SimpleHandler)
-    print(f"🌐 Servidor web escuchando en el puerto {port}")
     server.serve_forever()
 
 # --- ALMACENAMIENTO EN MEMORIA POR USUARIO ---
@@ -448,7 +447,12 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return
 
-def run_telegram_bot():
+def main():
+    # 1. Levantar el servidor web en un hilo secundario para cumplir con Render
+    server_thread = threading.Thread(target=run_web_server, daemon=True)
+    server_thread.start()
+
+    # 2. Construir la aplicación de Telegram
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", iniciar))
@@ -468,11 +472,10 @@ def run_telegram_bot():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.VOICE | filters.TEXT & ~filters.COMMAND, handle_voice_or_text))
 
-    print("🚀 ¡@SoyOrganizabot corriendo en hilo secundario!")
+    print("🚀 ¡@SoyOrganizabot listo y corriendo en Telegram!")
+    
+    # 3. Correr el bot en el hilo principal de forma limpia
     app.run_polling()
 
 if __name__ == '__main__':
-    bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
-    bot_thread.start()
-
-    run_web_server()
+    main()
