@@ -357,21 +357,31 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reunion_temp_state[user_id]["mes"] = mes
         reunion_temp_state[user_id]["step"] = "dia"
         
-        keyboard = [
-            [InlineKeyboardButton("1", callback_data="dia_01"), InlineKeyboardButton("5", callback_data="dia_05"), InlineKeyboardButton("10", callback_data="dia_10"), InlineKeyboardButton("15", callback_data="dia_15")],
-            [InlineKeyboardButton("17", callback_data="dia_17"), InlineKeyboardButton("20", callback_data="dia_20"), InlineKeyboardButton("25", callback_data="dia_25"), InlineKeyboardButton("30", callback_data="dia_30")]
-        ]
-        await query.edit_message_text("📅 Seleccioná el **día** de la reunión:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        # Generar botones del 1 al 31 en filas de 7
+        dias_buttons = []
+        fila_actual = []
+        for d in range(1, 32):
+            d_str = f"{d:02d}"
+            fila_actual.append(InlineKeyboardButton(str(d), callback_data=f"dia_{d_str}"))
+            if len(fila_actual) == 7:
+                dias_buttons.append(fila_actual)
+                fila_actual = []
+        if fila_actual:
+            dias_buttons.append(fila_actual)
+
+        await query.edit_message_text("📅 Seleccioná el **día** de la reunión:", reply_markup=InlineKeyboardMarkup(dias_buttons), parse_mode="Markdown")
 
     elif data.startswith("dia_"):
         dia = data.replace("dia_", "")
         reunion_temp_state[user_id]["dia"] = dia
         reunion_temp_state[user_id]["step"] = "hora"
         
+        # Selector interactivo de horas ampliado
         keyboard = [
-            [InlineKeyboardButton("09:00", callback_data="hora_09:00"), InlineKeyboardButton("10:30", callback_data="hora_10:30"), InlineKeyboardButton("12:00", callback_data="hora_12:00")],
-            [InlineKeyboardButton("15:00", callback_data="hora_15:00"), InlineKeyboardButton("17:00", callback_data="hora_17:00"), InlineKeyboardButton("19:00", callback_data="hora_19:00")],
-            [InlineKeyboardButton("20:30", callback_data="hora_20:30"), InlineKeyboardButton("21:00", callback_data="hora_21:00")]
+            [InlineKeyboardButton("08:00", callback_data="hora_08:00"), InlineKeyboardButton("09:00", callback_data="hora_09:00"), InlineKeyboardButton("10:00", callback_data="hora_10:00")],
+            [InlineKeyboardButton("11:00", callback_data="hora_11:00"), InlineKeyboardButton("14:00", callback_data="hora_14:00"), InlineKeyboardButton("15:00", callback_data="hora_15:00")],
+            [InlineKeyboardButton("16:00", callback_data="hora_16:00"), InlineKeyboardButton("17:00", callback_data="hora_17:00"), InlineKeyboardButton("18:00", callback_data="hora_18:00")],
+            [InlineKeyboardButton("19:00", callback_data="hora_19:00"), InlineKeyboardButton("20:00", callback_data="hora_20:00"), InlineKeyboardButton("21:00", callback_data="hora_21:00")]
         ]
         await query.edit_message_text("⏰ Seleccioná la **hora** de la reunión:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
@@ -448,13 +458,12 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             return
 
 def main():
-    # 1. Levantar el servidor web en un hilo secundario para cumplir con Render
     server_thread = threading.Thread(target=run_web_server, daemon=True)
     server_thread.start()
 
-    # 2. Construir la aplicación de Telegram
     app = ApplicationBuilder().token(TOKEN).build()
 
+    # Registro de comandos unificado
     app.add_handler(CommandHandler("start", iniciar))
     app.add_handler(CommandHandler("iniciar", iniciar))
     app.add_handler(CommandHandler("ayuda", ayuda))
@@ -473,8 +482,6 @@ def main():
     app.add_handler(MessageHandler(filters.VOICE | filters.TEXT & ~filters.COMMAND, handle_voice_or_text))
 
     print("🚀 ¡@SoyOrganizabot listo y corriendo en Telegram!")
-    
-    # 3. Correr el bot en el hilo principal de forma limpia
     app.run_polling()
 
 if __name__ == '__main__':
