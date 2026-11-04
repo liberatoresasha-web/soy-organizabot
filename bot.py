@@ -237,7 +237,6 @@ async def conectar_google(update: Update, context: ContextTypes.DEFAULT_TYPE):
         prompt='consent'
     )
     
-    # Guardamos el flow para retener la verificación PKCE
     oauth_flows[str(user_id)] = flow
 
     keyboard = [[InlineKeyboardButton("🌐 Conectar con Google", url=authorization_url)]]
@@ -448,8 +447,6 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     text = update.message.text
     if user_id in reunion_temp_state:
         state = reunion_temp_state[user_id]
-        step = state         if user_id in reunion_temp_state:
-        state = reunion_temp_state[user_id]
         step = state.get("step")
 
         if step == "titulo":
@@ -485,7 +482,9 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 f"✅ ¡Reunión agendada en **tu Google Calendar** personal!\n\n"
                 f"📌 {titulo}\n📅 {fecha_formateada} a las {hora} hs\n📍 {ubicacion_o_link}"
             )
-            return def main():
+            return
+
+def main():
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
 
@@ -507,4 +506,3 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
 
 if __name__ == '__main__':
     main()
-
