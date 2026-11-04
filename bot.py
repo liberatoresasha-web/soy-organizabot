@@ -29,7 +29,6 @@ class SimpleHandler(BaseHTTPRequestHandler):
 def run_web_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(('0.0.0.0', port), SimpleHandler)
-    print(f"🌐 Servidor web escuchando en el puerto {port}")
     server.serve_forever()
 
 # --- ALMACENAMIENTO EN MEMORIA POR USUARIO ---
@@ -91,47 +90,54 @@ async def iniciar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "hora_fin_de_semana": "10:00"
         }
 
+    # Única botonera inicial para configurar reportes
     keyboard = [
-        [InlineKeyboardButton("📅 Agendar Reunión", callback_data="menu_agenda"),
-         InlineKeyboardButton("📋 Ver Reuniones", callback_data="menu_reuniones")],
-        [InlineKeyboardButton("⚙️ Configurar Reportes", callback_data="menu_config"),
-         InlineKeyboardButton("📝 Ver Tareas", callback_data="menu_tareas")]
+        [InlineKeyboardButton("⚙️ Configurar reportes", callback_data="menu_config")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await update.message.reply_text(
+    texto_bienvenida = (
         f"¡Hola, **{user.first_name}**! 🤖 Bienvenido a @SoyOrganizabot.\n\n"
-        "Estoy listo para ayudarte. Usá /configuracion para configurar tu preferencia de horarios para el **reporte matutino**.",
-        reply_markup=reply_markup,
-        parse_mode="Markdown"
+        "Estoy listo para ayudarte y comenzar a organizar tu día. Esta es la lista de comandos disponibles:\n\n"
+        "• /configuracion - Configurar horarios para el **reporte matutino**\n"
+        "• /agenda_reunion - Asistente interactivo para agendar reuniones\n"
+        "• /reuniones - Ver listado de reuniones agendadas\n"
+        "• /tareas - Ver listado de pendientes actuales\n"
+        "• /nueva_tarea - Agregar una tarea nueva\n"
+        "• /nota - Guardar una nota rápida\n"
+        "• /lista_notas - Ver tus notas guardadas\n"
+        "• /accion - Registrar o consultar tus acciones cotidianas\n\n"
+        "Para comenzar, por favor configurá tus preferencias de horarios:"
     )
 
-# --- CONFIGURACIÓN INTERACTIVA DE REPORTES (ESTILO ASISTENTE) ---
+    await update.message.reply_text(texto_bienvenida, reply_markup=reply_markup, parse_mode="Markdown")
+
+# --- CONFIGURACIÓN INTERACTIVA DE REPORTES ---
 async def configuracion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in user_data_store:
         user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "hora_semana": "08:00", "hora_fin_de_semana": "10:00"}
 
-    h_sem = user_data_store[user_id]["hora_semana"]
-    h_fin = user_data_store[user_id]["hora_fin_de_semana"]
+    # Iniciar flujo de configuración guiada: primero horario semanal
+    reunion_temp_state[user_id] = {"cfg_tipo": "sem", "step": "cfg_hora"}
+    
+    horas_buttons = []
+    fila = []
+    for h in range(24):
+        h_str = f"{h:02d}"
+        fila.append(InlineKeyboardButton(f"{h_str} hs", callback_data=f"cfg_h_{h_str}"))
+        if len(fila) == 6:
+            horas_buttons.append(fila)
+            fila = []
+    if fila:
+        horas_buttons.append(fila)
 
-    keyboard = [
-        [InlineKeyboardButton(f"🏢 Horario Semanal ({h_sem})", callback_data="cfg_tipo_sem"),
-         InlineKeyboardButton(f"🏡 Horario Fin de Semana ({h_fin})", callback_data="cfg_tipo_fin")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    texto = (
-        "⚙️ **Configuración de Reportes Matutinos:**\n\n"
-        f"• Lunes a Viernes: **{h_sem} hs**\n"
-        f"• Fines de semana: **{h_fin} hs**\n\n"
-        "¿Qué horario querés configurar?"
-    )
-
+    texto = "⚙️ **Paso 1/2:** Seleccioná la hora para el **Horario Semanal (Lunes a Viernes)**:"
+    
     if update.callback_query:
-        await update.callback_query.edit_message_text(texto, reply_markup=reply_markup, parse_mode="Markdown")
+        await update.callback_query.edit_message_text(texto, reply_markup=InlineKeyboardMarkup(horas_buttons), parse_mode="Markdown")
     else:
-        await update.message.reply_text(texto, reply_markup=reply_markup, parse_mode="Markdown")
+        await update.message.reply_text(texto, reply_markup=InlineKeyboardMarkup(horas_buttons), parse_mode="Markdown")
 
 # --- ASISTENTE DE REUNIONES INTERACTIVO ---
 async def agenda_reunion(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -214,328 +220,4 @@ async def accion_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     else:
         hora_actual = datetime.datetime.now().strftime("%H:%M")
-        acciones_usuario.append({"accion": texto, "hora": hora_actual})
-        await update.message.reply_text(f"✅ **¡Acción guardada!**\nRegistré: *{texto}* a las *{hora_actual} hs*.", parse_mode="Markdown")
-
-# --- LISTAS Y TAREAS ---
-async def lista_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if len(context.args) < 2:
-        await update.message.reply_text("⚠️ Formato: `/lista [categoría] [texto]`\nEjemplo: `/lista supermercado Pan y leche`", parse_mode="Markdown")
-        return
-    
-    categoria = context.args[0].lower()
-    item = " ".join(context.args[1:])
-
-    if user_id not in user_data_store:
-        user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": []}
-    
-    if categoria not in user_data_store[user_id]["listas"]:
-        user_data_store[user_id]["listas"][categoria] = []
-    
-    user_data_store[user_id]["listas"][categoria].append(item)
-    await update.message.reply_text(f"📌 Agregado al listado **{categoria.upper()}**: {item}", parse_mode="Markdown")
-
-async def ver_listas(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in user_data_store or not user_data_store[user_id]["listas"]:
-        await update.message.reply_text("📂 No tenés listas guardadas.")
-        return
-    
-    listas = user_data_store[user_id]["listas"]
-    texto = "📂 **Tus Listas:**\n"
-    for cat, items in listas.items():
-        texto += f"\n🏷 **{cat.upper()}**\n" + "".join([f"  • {i}\n" for i in items])
-    
-    await update.message.reply_text(texto, parse_mode="Markdown")
-
-async def tareas(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in user_data_store or not user_data_store[user_id]["tareas"]:
-        texto = "📝 No tenés tareas pendientes."
-    else:
-        t_list = user_data_store[user_id]["tareas"]
-        texto = "📝 **Tus tareas pendientes:**\n\n" + "".join([f"• {t}\n" for t in t_list])
-    
-    if update.callback_query:
-        await update.callback_query.edit_message_text(texto, parse_mode="Markdown")
-    else:
-        await update.message.reply_text(texto, parse_mode="Markdown")
-
-async def nueva_tarea(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    texto_tarea = " ".join(context.args)
-    if not texto_tarea:
-        await update.message.reply_text("⚠️ Escribí la tarea. Ejemplo: `/nueva_tarea Reunión scout`", parse_mode="Markdown")
-        return
-    if user_id not in user_data_store:
-        user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": []}
-    user_data_store[user_id]["tareas"].append(texto_tarea)
-    await update.message.reply_text(f"➕ **Tarea agregada:** {texto_tarea}", parse_mode="Markdown")
-
-async def completada(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Seleccioná o indicá la tarea finalizada.")
-
-# --- MANEJADOR DE BOTONES Y PASOS INTERACTIVOS ---
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-    user_id = query.from_user.id
-    chat_id = query.message.chat_id
-
-    # Accesos directos desde el menú principal del /start
-    if data == "menu_agenda":
-        await agenda_reunion(update, context)
-        return
-    elif data == "menu_reuniones":
-        await listar_reuniones(update, context)
-        return
-    elif data == "menu_config":
-        await configuracion(update, context)
-        return
-    elif data == "menu_tareas":
-        await tareas(update, context)
-        return
-
-    # Configuración interactiva de reporte matutino (Estilo selección de tipo de reunión)
-    if data == "cfg_tipo_sem" or data == "cfg_tipo_fin":
-        tipo_cfg = "sem" if data == "cfg_tipo_sem" else "fin"
-        reunion_temp_state[user_id] = {"cfg_tipo": tipo_cfg, "step": "cfg_hora"}
-        
-        # Mostrar selector de horas (00 a 23)
-        horas_buttons = []
-        fila = []
-        for h in range(24):
-            h_str = f"{h:02d}"
-            fila.append(InlineKeyboardButton(f"{h_str} hs", callback_data=f"cfg_h_{h_str}"))
-            if len(fila) == 6:
-                horas_buttons.append(fila)
-                fila = []
-        if fila:
-            horas_buttons.append(fila)
-            
-        etiqueta = "Horario Semanal" if tipo_cfg == "sem" else "Horario Fin de Semana"
-        await query.edit_message_text(f"⚙️ Configurando **{etiqueta}**\n\nSeleccioná la **hora**:", reply_markup=InlineKeyboardMarkup(horas_buttons), parse_mode="Markdown")
-        return
-
-    elif data.startswith("cfg_h_"):
-        h_str = data.replace("cfg_h_", "")
-        reunion_temp_state[user_id]["cfg_h"] = h_str
-        reunion_temp_state[user_id]["step"] = "cfg_minuto"
-
-        min_buttons = [
-            [InlineKeyboardButton("00 min", callback_data="cfg_m_00"), InlineKeyboardButton("15 min", callback_data="cfg_m_15"), InlineKeyboardButton("30 min", callback_data="cfg_m_30"), InlineKeyboardButton("45 min", callback_data="cfg_m_45")],
-            [InlineKeyboardButton("05 min", callback_data="cfg_m_05"), InlineKeyboardButton("10 min", callback_data="cfg_m_10"), InlineKeyboardButton("20 min", callback_data="cfg_m_20"), InlineKeyboardButton("25 min", callback_data="cfg_m_25")],
-            [InlineKeyboardButton("35 min", callback_data="cfg_m_35"), InlineKeyboardButton("40 min", callback_data="cfg_m_40"), InlineKeyboardButton("50 min", callback_data="cfg_m_50"), InlineKeyboardButton("55 min", callback_data="cfg_m_55")]
-        ]
-        await query.edit_message_text(f"⚙️ Hora seleccionada: **{h_str} hs**. Ahora seleccioná los **minutos**:", reply_markup=InlineKeyboardMarkup(min_buttons), parse_mode="Markdown")
-        return
-
-    elif data.startswith("cfg_m_"):
-        m_str = data.replace("cfg_m_", "")
-        state = reunion_temp_state.get(user_id, {})
-        tipo_cfg = state.get("cfg_tipo", "sem")
-        h_str = state.get("cfg_h", "08")
-        nueva_hora = f"{h_str}:{m_str}"
-        
-        hora_target, min_target = int(h_str), int(m_str)
-
-        if user_id not in user_data_store:
-            user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "hora_semana": "08:00", "hora_fin_de_semana": "10:00"}
-        
-        if tipo_cfg == "sem":
-            user_data_store[user_id]["hora_semana"] = nueva_hora
-            job_name = f"{user_id}_sem"
-            etiqueta = "Horario Semanal"
-        else:
-            user_data_store[user_id]["hora_fin_de_semana"] = nueva_hora
-            job_name = f"{user_id}_fin"
-            etiqueta = "Horario Fin de Semana"
-
-        hora_utc = (hora_target + 3) % 24
-        for job in context.job_queue.get_jobs_by_name(job_name):
-            job.schedule_removal()
-
-        context.job_queue.run_daily(
-            enviar_reporte_matutino,
-            time=datetime.time(hour=hora_utc, minute=min_target, second=0),
-            chat_id=chat_id, user_id=user_id, name=job_name
-        )
-        await query.edit_message_text(f"✅ ¡**{etiqueta}** actualizado con éxito a las **{nueva_hora} hs**!", parse_mode="Markdown")
-        return
-
-    # Asistente de reuniones
-    if data == "reunion_presencial" or data == "reunion_virtual":
-        tipo = "Presencial" if data == "reunion_presencial" else "Virtual"
-        reunion_temp_state[user_id] = {"tipo": tipo, "step": "titulo"}
-        await query.edit_message_text(
-            f"📝 **Reunión {tipo}**\n\nPor favor, escribí el **título** de la reunión:",
-            parse_mode="Markdown"
-        )
-    elif data.startswith("anio_"):
-        anio = data.replace("anio_", "")
-        reunion_temp_state[user_id]["anio"] = anio
-        reunion_temp_state[user_id]["step"] = "mes"
-        
-        keyboard = [
-            [InlineKeyboardButton("Enero", callback_data="mes_01"), InlineKeyboardButton("Febrero", callback_data="mes_02"), InlineKeyboardButton("Marzo", callback_data="mes_03")],
-            [InlineKeyboardButton("Abril", callback_data="mes_04"), InlineKeyboardButton("Mayo", callback_data="mes_05"), InlineKeyboardButton("Junio", callback_data="mes_06")],
-            [InlineKeyboardButton("Julio", callback_data="mes_07"), InlineKeyboardButton("Agosto", callback_data="mes_08"), InlineKeyboardButton("Septiembre", callback_data="mes_09")],
-            [InlineKeyboardButton("Octubre", callback_data="mes_10"), InlineKeyboardButton("Noviembre", callback_data="mes_11"), InlineKeyboardButton("Diciembre", callback_data="mes_12")]
-        ]
-        await query.edit_message_text("📅 Seleccioná el **mes** de la reunión:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
-
-    elif data.startswith("mes_"):
-        mes = data.replace("mes_", "")
-        reunion_temp_state[user_id]["mes"] = mes
-        reunion_temp_state[user_id]["step"] = "dia"
-        
-        dias_buttons = []
-        fila_actual = []
-        for d in range(1, 32):
-            d_str = f"{d:02d}"
-            fila_actual.append(InlineKeyboardButton(str(d), callback_data=f"dia_{d_str}"))
-            if len(fila_actual) == 7:
-                dias_buttons.append(fila_actual)
-                fila_actual = []
-        if fila_actual:
-            dias_buttons.append(fila_actual)
-
-        await query.edit_message_text("📅 Seleccioná el **día** de la reunión:", reply_markup=InlineKeyboardMarkup(dias_buttons), parse_mode="Markdown")
-
-    elif data.startswith("dia_"):
-        dia = data.replace("dia_", "")
-        reunion_temp_state[user_id]["dia"] = dia
-        reunion_temp_state[user_id]["step"] = "hora_reunion"
-        
-        horas_reunion = []
-        fila = []
-        for h in range(24):
-            h_str = f"{h:02d}"
-            fila.append(InlineKeyboardButton(f"{h_str} hs", callback_data=f"reu_h_{h_str}"))
-            if len(fila) == 6:
-                horas_reunion.append(fila)
-                fila = []
-        if fila:
-            horas_reunion.append(fila)
-
-        await query.edit_message_text("⏰ Seleccioná la **hora** de la reunión:", reply_markup=InlineKeyboardMarkup(horas_reunion), parse_mode="Markdown")
-
-    elif data.startswith("reu_h_"):
-        h_str = data.replace("reu_h_", "")
-        reunion_temp_state[user_id]["reu_h"] = h_str
-        reunion_temp_state[user_id]["step"] = "minuto_reunion"
-
-        min_reunion = [
-            [InlineKeyboardButton("00 min", callback_data="reu_m_00"), InlineKeyboardButton("15 min", callback_data="reu_m_15"), InlineKeyboardButton("30 min", callback_data="reu_m_30"), InlineKeyboardButton("45 min", callback_data="reu_m_45")],
-            [InlineKeyboardButton("05 min", callback_data="reu_m_05"), InlineKeyboardButton("10 min", callback_data="reu_m_10"), InlineKeyboardButton("20 min", callback_data="reu_m_20"), InlineKeyboardButton("25 min", callback_data="reu_m_25")],
-            [InlineKeyboardButton("35 min", callback_data="reu_m_35"), InlineKeyboardButton("40 min", callback_data="reu_m_40"), InlineKeyboardButton("50 min", callback_data="reu_m_50"), InlineKeyboardButton("55 min", callback_data="reu_m_55")]
-        ]
-        await query.edit_message_text(f"⏰ Hora: **{h_str} hs**. Seleccioná los **minutos**:", reply_markup=InlineKeyboardMarkup(min_reunion), parse_mode="Markdown")
-        return
-
-    elif data.startswith("reu_m_"):
-        m_str = data.replace("reu_m_", "")
-        state = reunion_temp_state.get(user_id, {})
-        h_str = state.get("reu_h", "09")
-        hora_final = f"{h_str}:{m_str}"
-        
-        state["hora"] = hora_final
-        tipo = state.get("tipo")
-        state["step"] = "lugar_link"
-
-        prompt_texto = "📍 Ingresá la **dirección o lugar** de la reunión:" if tipo == "Presencial" else "💻 Ingresá el **link** de la reunión:"
-        await query.edit_message_text(prompt_texto, parse_mode="Markdown")
-        return
-
-    elif data == "ver_resumen_acciones":
-        acciones = user_data_store.get(user_id, {}).get("acciones", [])
-        if not acciones:
-            await query.edit_message_text("📋 No hay acciones registradas hoy.")
-            return
-        resumen_str = "\n".join([f"• {a['accion']} (a las {a['hora']})" for a in acciones])
-        await query.edit_message_text(f"📋 **Resumen de tus acciones de hoy:**\n\n{resumen_str}", parse_mode="Markdown")
-    elif data == "no_resumen":
-        await query.edit_message_text("👍 ¡Entendido!")
-
-async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    text = update.message.text
-
-    if update.message.voice:
-        await update.message.reply_text("🎤 Recibí tu nota de voz. (Próximamente transcripción automática integrada). Por ahora podés usar los comandos.")
-        return
-
-    if user_id in reunion_temp_state:
-        state = reunion_temp_state[user_id]
-        step = state.get("step")
-
-        if step == "titulo":
-            state["titulo"] = text
-            state["step"] = "anio"
-            
-            keyboard = [
-                [InlineKeyboardButton("2026", callback_data="anio_2026"), InlineKeyboardButton("2027", callback_data="anio_2027")]
-            ]
-            await update.message.reply_text(
-                "📅 Seleccioná el **año** de la reunión:",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode="Markdown"
-            )
-            return
-
-        elif step == "lugar_link":
-            ubicacion_o_link = text
-            tipo = state.get("tipo")
-            titulo = state.get("titulo")
-            anio = state.get("anio")
-            mes = state.get("mes")
-            dia = state.get("dia")
-            hora = state.get("hora")
-
-            fecha_formateada = f"{anio}-{mes}-{dia}"
-
-            if user_id not in user_data_store:
-                user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": []}
-            
-            detalle = f"[{tipo}] {titulo} | {fecha_formateada} | {hora} | {ubicacion_o_link}"
-            user_data_store[user_id]["reuniones"].append(detalle)
-
-            del reunion_temp_state[user_id]
-
-            await update.message.reply_text(
-                f"✅ **¡Reunión {tipo.lower()} agendada con éxito!**\n\n"
-                f"📌 **{titulo}**\n📅 Fecha: {fecha_formateada} a las {hora} hs\n📍 Detalle: {ubicacion_o_link}\n\n"
-                "*(Sincronizado con Google Calendar)*",
-                parse_mode="Markdown"
-            )
-            return
-
-def main():
-    # 1. Levantar el servidor web en un hilo secundario para cumplir con Render
-    web_thread = threading.Thread(target=run_web_server, daemon=True)
-    web_thread.start()
-
-    # 2. Correr el bot de Telegram directamente en el hilo principal
-    app = ApplicationBuilder().token(TOKEN).build()
-
-    app.add_handler(CommandHandler("start", iniciar))
-    app.add_handler(CommandHandler("iniciar", iniciar))
-    app.add_handler(CommandHandler("configuracion", configuracion))
-    app.add_handler(CommandHandler("agenda_reunion", agenda_reunion))
-    app.add_handler(CommandHandler("reuniones", listar_reuniones))
-    app.add_handler(CommandHandler("accion", accion_cmd))
-    app.add_handler(CommandHandler("lista", lista_cmd))
-    app.add_handler(CommandHandler("ver_listas", ver_listas))
-    app.add_handler(CommandHandler("tareas", tareas))
-    app.add_handler(CommandHandler("nueva_tarea", nueva_tarea))
-    app.add_handler(CommandHandler("completada", completada))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.VOICE | filters.TEXT & ~filters.COMMAND, handle_voice_or_text))
-
-    print("🚀 ¡@SoyOrganizabot listo y corriendo en Telegram (Hilo principal)!")
-    app.run_polling()
-
-if __name__ == '__main__':
-    main()
+        acciones_usuario.append({"
