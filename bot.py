@@ -1,6 +1,5 @@
 import os
 import logging
-import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -17,7 +16,7 @@ logging.basicConfig(
 
 TOKEN = "9006959123:AAGwA8wE4vhFi8-tv0bUvFAnnLnfyi2ZCXQ"
 
-# --- SERVIDOR WEB OBLIGATORIO EN EL HILO PRINCIPAL (PARA RENDER) ---
+# --- SERVIDOR WEB EN HILO SECUNDARIO (PARA CUMPLIR CON RENDER) ---
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -489,13 +488,14 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return
 
-def run_telegram_bot():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
+def main():
+    # 1. Levantar el servidor web en un hilo secundario para cumplir con Render
+    web_thread = threading.Thread(target=run_web_server, daemon=True)
+    web_thread.start()
+
+    # 2. Correr el bot de Telegram directamente en el hilo principal (vital para las señales de Python)
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Registro oficial de comandos
     app.add_handler(CommandHandler("start", iniciar))
     app.add_handler(CommandHandler("iniciar", iniciar))
     app.add_handler(CommandHandler("ayuda", ayuda))
@@ -511,13 +511,8 @@ def run_telegram_bot():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.VOICE | filters.TEXT & ~filters.COMMAND, handle_voice_or_text))
 
-    print("🚀 ¡@SoyOrganizabot corriendo en hilo secundario de Telegram!")
+    print("🚀 ¡@SoyOrganizabot listo y corriendo en Telegram (Hilo principal)!")
     app.run_polling()
 
 if __name__ == '__main__':
-    # Hilo secundario para el bot de Telegram
-    bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
-    bot_thread.start()
-
-    # Hilo principal dedicado al servidor HTTP de Render
-    run_web_server()
+    main()
