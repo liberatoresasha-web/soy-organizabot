@@ -35,6 +35,10 @@ SCOPES = [
 
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 
+# Diccionarios de estado y flujos OAuth temporales
+oauth_pending_states = {}
+oauth_flows = {}
+
 # --- PERSISTENCIA DE DATOS (JSON) ---
 def cargar_datos():
     if os.path.exists(DATA_FILE):
@@ -88,21 +92,25 @@ class OAuthHandler(BaseHTTPRequestHandler):
                 return
 
             try:
-                client_config = {
-                    "web": {
-                        "client_id": CLIENT_ID,
-                        "client_secret": CLIENT_SECRET,
-                        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                        "token_uri": "https://oauth2.googleapis.com/token",
-                        "redirect_uris": [REDIRECT_URI]
+                user_id = str(state)
+                flow = oauth_flows.get(user_id)
+                
+                if not flow:
+                    client_config = {
+                        "web": {
+                            "client_id": CLIENT_ID,
+                            "client_secret": CLIENT_SECRET,
+                            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                            "token_uri": "https://oauth2.googleapis.com/token",
+                            "redirect_uris": [REDIRECT_URI]
+                        }
                     }
-                }
-                flow = Flow.from_client_config(client_config, scopes=SCOPES)
-                flow.redirect_uri = REDIRECT_URI
+                    flow = Flow.from_client_config(client_config, scopes=SCOPES)
+                    flow.redirect_uri = REDIRECT_URI
+
                 flow.fetch_token(code=code)
                 credentials = flow.credentials
 
-                user_id = str(state)
                 if user_id not in user_data_store:
                     user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "notas": []}
                 
@@ -222,12 +230,15 @@ async def conectar_google(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     flow = Flow.from_client_config(client_config, scopes=SCOPES)
     flow.redirect_uri = REDIRECT_URI
-    authorization_url, _ = flow.authorization_url(
+    authorization_url, state_val = flow.authorization_url(
         access_type='offline',
         include_granted_scopes='true',
         state=str(user_id),
         prompt='consent'
     )
+    
+    # Guardamos el flow para retener la verificación PKCE
+    oauth_flows[str(user_id)] = flow
 
     keyboard = [[InlineKeyboardButton("🌐 Conectar con Google", url=authorization_url)]]
     texto = "🔐 **Vincular cuenta de Google**\n\nHacé clic en el siguiente botón para autorizar al bot a gestionar *tu* calendario y tus tareas de forma segura:"
@@ -403,13 +414,12 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     str_id = str(user_id)
 
     if update.message.voice:
+        audio_path = f"voice_{user_id}.ogg"
         try:
             voice_file = await context.bot.get_file(update.message.voice.file_id)
-            audio_path = f"voice_{user_id}.ogg"
             await voice_file.download_to_drive(audio_path)
 
             with open(audio_path, "rb") as audio:
-                # Sintaxis compatible con openai-3.x instalado en Render
                 transcript = openai.Audio.transcribe("whisper-1", audio)
             
             texto_transcrito = transcript["text"] if isinstance(transcript, dict) else transcript.text
@@ -429,12 +439,16 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             else:
                 await update.message.reply_text("🤖 Audio procesado.")
         except Exception as e:
+            if os.path.exists(audio_path):
+                os.remove(audio_path)
             print(f"Error audio: {e}")
             await update.message.reply_text("❌ Error al procesar audio.")
         return
 
     text = update.message.text
     if user_id in reunion_temp_state:
+        state = reunion_temp_state[user_id]
+        step = state         if user_id in reunion_temp_state:
         state = reunion_temp_state[user_id]
         step = state.get("step")
 
@@ -472,26 +486,3 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 f"📌 {titulo}\n📅 {fecha_formateada} a las {hora} hs\n📍 {ubicacion_o_link}"
             )
             return
-
-def main():
-    web_thread = threading.Thread(target=run_web_server, daemon=True)
-    web_thread.start()
-
-    app = ApplicationBuilder().token(TOKEN).build()
-    
-    app.add_handler(CommandHandler(["start", "iniciar"], iniciar))
-    app.add_handler(CommandHandler("conectar", conectar_google))
-    app.add_handler(CommandHandler(["agenda_reunion", "reuniones"], agenda_reunion))
-    app.add_handler(CommandHandler("tareas", tareas))
-    app.add_handler(CommandHandler("nueva_tarea", nueva_tarea))
-    app.add_handler(CommandHandler("nota", nota_cmd))
-    app.add_handler(CommandHandler("lista_notas", lista_notas))
-    
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.VOICE | filters.TEXT & ~filters.COMMAND, handle_voice_or_text))
-
-    print("🚀 @SoyOrganizabot con OAuth individual por usuario en marcha!")
-    app.run_polling()
-
-if __name__ == '__main__':
-    main()
