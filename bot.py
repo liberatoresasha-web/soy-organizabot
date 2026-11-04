@@ -16,7 +16,7 @@ logging.basicConfig(
 
 TOKEN = "9006959123:AAGwA8wE4vhFi8-tv0bUvFAnnLnfyi2ZCXQ"
 
-# --- SERVIDOR WEB OBLIGATORIO PARA RENDER ---
+# --- SERVIDOR WEB OBLIGATORIO PARA RENDER (HILO PRINCIPAL) ---
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -448,9 +448,33 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return
 
-def main():
-    # 1. ARRANCAR EL SERVIDOR WEB PRIMERO (Vital para Render)
-    server_thread = threading.Thread(target=run_web_server, daemon=True)
-    server_thread.start()
+def run_telegram_bot():
+    app = ApplicationBuilder().token(TOKEN).build()
 
-    #
+    app.add_handler(CommandHandler("start", iniciar))
+    app.add_handler(CommandHandler("iniciar", iniciar))
+    app.add_handler(CommandHandler("ayuda", ayuda))
+    app.add_handler(CommandHandler("configuracion", configuracion))
+    app.add_handler(CommandHandler("hora_semana", set_hora_semana))
+    app.add_handler(CommandHandler("hora_finde", set_hora_finde))
+    app.add_handler(CommandHandler("Agenda_reunion", agenda_reunion))
+    app.add_handler(CommandHandler("reuniones", listar_reuniones))
+    app.add_handler(CommandHandler("accion", accion_cmd))
+    app.add_handler(CommandHandler("lista", lista_cmd))
+    app.add_handler(CommandHandler("ver_listas", ver_listas))
+    app.add_handler(CommandHandler("tareas", tareas))
+    app.add_handler(CommandHandler("nueva_tarea", nueva_tarea))
+    app.add_handler(CommandHandler("completada", completada))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.VOICE | filters.TEXT & ~filters.COMMAND, handle_voice_or_text))
+
+    print("🚀 ¡@SoyOrganizabot corriendo en hilo secundario!")
+    app.run_polling()
+
+if __name__ == '__main__':
+    # Lanzar el bot de Telegram en un hilo independiente para que no bloquee el puerto web de Render
+    bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
+    bot_thread.start()
+
+    # El hilo principal se encarga del servidor HTTP exigido por Render
+    run_web_server()
