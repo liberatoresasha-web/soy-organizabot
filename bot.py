@@ -1,5 +1,6 @@
 import os
 import logging
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -489,6 +490,9 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             return
 
 def run_telegram_bot():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
     app = ApplicationBuilder().token(TOKEN).build()
 
     # Registro oficial de comandos
