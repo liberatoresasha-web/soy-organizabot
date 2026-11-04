@@ -101,7 +101,7 @@ async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "📋 **Comandos disponibles en @SoyOrganizabot:**\n\n"
         "• /configuracion - Gestionar horarios de reportes\n"
-        "• /Agenda_reunion - Asistente interactivo para agendar reuniones\n"
+        "• /agenda_reunion - Asistente interactivo para agendar reuniones\n"
         "• /reuniones - Ver listado de reuniones\n"
         "• /lista [categoría] [texto] - Agregar ítem a lista\n"
         "• /ver_listas - Ver todas tus listas\n"
@@ -457,24 +457,5 @@ def run_telegram_bot():
     app.add_handler(CommandHandler("configuracion", configuracion))
     app.add_handler(CommandHandler("hora_semana", set_hora_semana))
     app.add_handler(CommandHandler("hora_finde", set_hora_finde))
-    app.add_handler(CommandHandler("Agenda_reunion", agenda_reunion))
-    app.add_handler(CommandHandler("reuniones", listar_reuniones))
-    app.add_handler(CommandHandler("accion", accion_cmd))
-    app.add_handler(CommandHandler("lista", lista_cmd))
-    app.add_handler(CommandHandler("ver_listas", ver_listas))
-    app.add_handler(CommandHandler("tareas", tareas))
-    app.add_handler(CommandHandler("nueva_tarea", nueva_tarea))
-    app.add_handler(CommandHandler("completada", completada))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.VOICE | filters.TEXT & ~filters.COMMAND, handle_voice_or_text))
-
-    print("🚀 ¡@SoyOrganizabot corriendo en hilo secundario!")
-    app.run_polling()
-
-if __name__ == '__main__':
-    # Lanzar el bot de Telegram en un hilo independiente para que no bloquee el puerto web de Render
-    bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
-    bot_thread.start()
-
-    # El hilo principal se encarga del servidor HTTP exigido por Render
-    run_web_server()
+    app.add_handler(CommandHandler("agenda_reunion", agenda_reunion)) # En minúsculas
+    app.add_handler(CommandHandler("reuniones", listar_reuniones
