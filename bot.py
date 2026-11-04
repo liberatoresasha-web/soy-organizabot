@@ -57,6 +57,7 @@ def guardar_datos(data):
 user_data_store = cargar_datos()
 reunion_temp_state = {}
 recordatorio_temp_state = {}
+nota_temp_state = {}
 user_input_states = {}
 
 def obtener_credenciales_usuario(user_id):
@@ -111,7 +112,7 @@ class OAuthHandler(BaseHTTPRequestHandler):
                 credentials = flow.credentials
 
                 if user_id not in user_data_store:
-                    user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": {}, "recordatorios": [], "frecuentes": [], "notas": [], "config": {"semana": "09:00", "fin_semana": "10:00"}}
+                    user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": {}, "recordatorios": [], "frecuentes": [], "notas": {}, "config": {"semana": "09:00", "fin_semana": "10:00"}}
                 
                 user_data_store[user_id]["google_creds"] = {
                     'token': credentials.token,
@@ -125,13 +126,15 @@ class OAuthHandler(BaseHTTPRequestHandler):
 
                 self.send_response(200)
                 self.end_headers()
-                html_respuesta = """
+                
+                # HTML con redirección automática y aviso al bot (Punto 1)
+                html_respuesta = f"""
                 <html>
                     <body style='font-family:sans-serif; text-align:center; padding-top:50px; background-color:#f4f7f6;'>
                         <div style='background:white; max-width:500px; margin:0 auto; padding:30px; border-radius:10px; box-shadow:0px 4px 10px rgba(0,0,0,0.1);'>
                             <h2 style='color:#2b6cb0;'>¡Cuenta de Google vinculada con éxito! 🎉</h2>
                             <p style='color:#4a5568;'>Ya podés volver a Telegram para seguir utilizando el asistente.</p>
-                            <a href='https://t.me/SoyOrganizabot' style='display:inline-block; margin-top:20px; padding:12px 24px; background:#3182ce; color:white; text-decoration:none; border-radius:5px; font-weight:bold;'>Volver al Bot de Telegram</a>
+                            <a href='https://t.me/SoyOrganizabot?start=vinculado' style='display:inline-block; margin-top:20px; padding:12px 24px; background:#3182ce; color:white; text-decoration:none; border-radius:5px; font-weight:bold;'>Volver al Bot de Telegram</a>
                         </div>
                     </body>
                 </html>
@@ -239,21 +242,31 @@ async def iniciar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     str_id = str(user.id)
     if str_id not in user_data_store:
         user_data_store[str_id] = {
-            "tareas": [], "listas": {}, "reuniones": [], "acciones": {}, "recordatorios": [], "frecuentes": [], "notas": [],
+            "tareas": [], "listas": {}, "reuniones": [], "acciones": {}, "recordatorios": [], "frecuentes": [], "notas": {},
             "config": {"semana": "09:00", "fin_semana": "10:00"}
         }
         guardar_datos(user_data_store)
+
+    # Si vuelve de vincular con éxito (Punto 1)
+    if context.args and "vinculado" in context.args:
+        keyboard = [[InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]]
+        await update.message.reply_text(
+            "🎉 **¡Cuenta de Google vinculada con éxito!**\n\nYa tenés tu calendario y tareas sincronizados.",
+            parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
 
     await configuracion_cmd(update, context)
 
 async def menu_principal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    # Orden exacto requerido
+    # Orden exacto con Notas incorporado (Punto 4)
     keyboard = [
         [InlineKeyboardButton("📝 Tareas", callback_data="menu_tareas_listas")],
         [InlineKeyboardButton("➕ Nueva Tarea", callback_data="prompt_nueva_tarea")],
         [InlineKeyboardButton("⏰ Recordatorio", callback_data="menu_recordatorios")],
         [InlineKeyboardButton("⚡ Acción", callback_data="menu_accion")],
+        [InlineKeyboardButton("📌 Notas", callback_data="menu_notas")],
         [InlineKeyboardButton("📅 Reuniones", callback_data="menu_reuniones_lista")],
         [InlineKeyboardButton("⚙️ Configuración de Horarios", callback_data="menu_config")],
         [InlineKeyboardButton("🔗 Vincular Google", callback_data="vincular_google")]
@@ -337,7 +350,40 @@ async def accion_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(texto, reply_markup=markup, parse_mode="Markdown")
 
-# --- MENÚ DE RECORDATORIOS ---
+# --- MENÚ DE NOTAS (Punto 4) ---
+async def notas_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    texto = "📌 **Gestión de Notas**\n\nSeleccioná una opción:"
+    keyboard = [
+        [InlineKeyboardButton("📁 Categoría de Notas (Listas)", callback_data="listar_categorias_notas")],
+        [InlineKeyboardButton("➕ Nueva Lista de Notas", callback_data="crear_lista_notas")],
+        [InlineKeyboardButton("📝 Agregar Nota", callback_data="prompt_agregar_nota")],
+        [InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]
+    ]
+    markup = InlineKeyboardMarkup(keyboard)
+    if update.callback_query:
+        await update.callback_query.edit_message_text(texto, reply_markup=markup, parse_mode="Markdown")
+    else:
+        await update.message.reply_text(texto, reply_markup=markup, parse_mode="Markdown")
+
+async def listar_categorias_notas(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    str_id = str(user_id)
+    listas_notas = user_data_store.get(str_id, {}).get("notas", {})
+
+    if not listas_notas:
+        texto = "📂 No tenés categorías o listas de notas guardadas."
+    else:
+        texto = "📁 **Tus Categorías de Notas:**\n\n"
+        for categoria, items in listas_notas.items():
+            texto += f"• **{categoria}** ({len(items)} notas)\n"
+
+    keyboard = [
+        [InlineKeyboardButton("⬅️ Volver", callback_data="menu_notas")],
+        [InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]
+    ]
+    await update.callback_query.edit_message_text(texto, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+# --- MENÚ DE RECORDATORIOS (Punto 3: Menú anterior y Principal) ---
 async def recordatorio_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = "⏰ **Gestión de Recordatorios**\n\nSeleccioná una opción:"
     keyboard = [
@@ -365,7 +411,7 @@ async def listar_guardados(update: Update, context: ContextTypes.DEFAULT_TYPE):
             texto += f"• {r.get('texto')} — 📅 {r.get('fecha')} a las {r.get('hora')} hs\n"
 
     keyboard = [
-        [InlineKeyboardButton("➕ Nuevo Recordatorio", callback_data="nuevo_recordatorio_flow")],
+        [InlineKeyboardButton("⬅️ Volver", callback_data="menu_recordatorios")],
         [InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]
     ]
     await update.callback_query.edit_message_text(texto, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
@@ -384,7 +430,7 @@ async def listar_frecuentes(update: Update, context: ContextTypes.DEFAULT_TYPE):
             texto += f"• **{f.get('texto')}** — 🕒 {f.get('frecuencia')} a las {f.get('hora')} Hs\n"
 
     keyboard = [
-        [InlineKeyboardButton("➕ Nuevo Recordatorio", callback_data="nuevo_recordatorio_flow")],
+        [InlineKeyboardButton("⬅️ Volver", callback_data="menu_recordatorios")],
         [InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]
     ]
     await update.callback_query.edit_message_text(texto, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
@@ -393,7 +439,10 @@ async def iniciar_flujo_recordatorio(update: Update, context: ContextTypes.DEFAU
     user_id = update.effective_user.id
     recordatorio_temp_state[user_id] = {"step": "texto"}
     texto = "⏰ **Asistente de Recordatorios**\n\nEscribí el texto de lo que querés que te recuerde:"
-    keyboard = [[InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]]
+    keyboard = [
+        [InlineKeyboardButton("⬅️ Volver", callback_data="menu_recordatorios")],
+        [InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]
+    ]
     await update.callback_query.edit_message_text(texto, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
 async def agenda_reunion(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -464,7 +513,7 @@ async def nueva_tarea(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if str_id not in user_data_store:
-        user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": {}, "recordatorios": [], "frecuentes": [], "notas": []}
+        user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": {}, "recordatorios": [], "frecuentes": [], "notas": {}}
     user_data_store[str_id]["tareas"].append(texto_tarea)
     guardar_datos(user_data_store)
     agregar_google_task(user_id, texto_tarea)
@@ -526,29 +575,6 @@ async def completada_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(texto, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
-async def nota_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    str_id = str(user_id)
-    texto_nota = " ".join(context.args)
-    if not texto_nota:
-        await update.message.reply_text("⚠️ Escribí la nota. Ejemplo: /nota Comprar regalo")
-        return
-    if str_id not in user_data_store:
-        user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "recordatorios": [], "frecuentes": [], "notas": []}
-    user_data_store[str_id]["notas"].append(texto_nota)
-    guardar_datos(user_data_store)
-    await update.message.reply_text(f"📌 Nota guardada: {texto_nota}")
-
-async def lista_notas(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    str_id = str(user_id)
-    n_list = user_data_store.get(str_id, {}).get("notas", [])
-    texto = "📂 No tenés notas guardadas." if not n_list else "📂 Tus notas guardadas:\n\n" + "".join([f"• {n}\n" for n in n_list])
-    if update.callback_query:
-        await update.callback_query.edit_message_text(texto)
-    else:
-        await update.message.reply_text(texto)
-
 # --- MANEJADOR DE BOTONES INTERACTIVOS ---
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -565,6 +591,48 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     elif data == "menu_recordatorios":
         await recordatorio_menu(update, context)
+        return
+    elif data == "menu_notas":
+        await notas_menu(update, context)
+        return
+    elif data == "listar_categorias_notas":
+        await listar_categorias_notas(update, context)
+        return
+    elif data == "crear_lista_notas":
+        user_input_states[user_id] = "esperando_nombre_categoria_nota"
+        keyboard = [
+            [InlineKeyboardButton("⬅️ Volver", callback_data="menu_notas")],
+            [InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]
+        ]
+        await query.edit_message_text("📁 Escribí el nombre de la nueva categoría/lista de notas:", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+    elif data == "prompt_agregar_nota":
+        listas_n = user_data_store.get(str_id, {}).get("notas", {})
+        if not listas_n:
+            # Si no hay listas creadas, pedimos crear una directamente
+            user_input_states[user_id] = "esperando_nombre_categoria_nota"
+            keyboard = [[InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]]
+            await query.edit_message_text("⚠️ No tenés listas de notas. Escribí el nombre de la primera categoría:", reply_markup=InlineKeyboardMarkup(keyboard))
+            return
+        
+        # Mostrar opciones de listas existentes
+        keyboard = []
+        for cat in listas_n.keys():
+            keyboard.append([InlineKeyboardButton(f"📁 {cat}", callback_data=f"nota_cat_{cat}")])
+        keyboard.append([InlineKeyboardButton("➕ Crear Nueva Lista", callback_data="crear_lista_notas")])
+        keyboard.append([InlineKeyboardButton("⬅️ Volver", callback_data="menu_notas")])
+        keyboard.append([InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")])
+        await query.edit_message_text("📌 Seleccioná a qué lista querés agregar la nota:", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+    elif data.startswith("nota_cat_"):
+        cat_elegida = data.replace("nota_cat_", "")
+        nota_temp_state[user_id] = {"categoria": cat_elegida}
+        user_input_states[user_id] = "esperando_texto_nota"
+        keyboard = [
+            [InlineKeyboardButton("⬅️ Volver", callback_data="prompt_agregar_nota")],
+            [InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]
+        ]
+        await query.edit_message_text(f"✍️ Escribí el contenido de la nota para la lista **{cat_elegida}**:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
         return
     elif data == "nuevo_recordatorio_flow":
         await iniciar_flujo_recordatorio(update, context)
@@ -645,13 +713,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("✅ ¡Excelente! Recordatorio completado por hoy. 👍", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]]))
         return
 
-    # Selección de frecuencia en asistente de recordatorio
     if data.startswith("freq_type_"):
         frecuencia = data.replace("freq_type_", "")
         if user_id in recordatorio_temp_state:
             recordatorio_temp_state[user_id]["frecuencia"] = frecuencia
             recordatorio_temp_state[user_id]["step"] = "hora"
-            keyboard = [[InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]]
+            keyboard = [
+                [InlineKeyboardButton("⬅️ Volver", callback_data="nuevo_recordatorio_flow")],
+                [InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]
+            ]
             await query.edit_message_text("🕒 Escribí la hora a la que querés que te avise (ej: 20:00 o 17:00):", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
@@ -753,7 +823,7 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             if "tarea" in texto_transcrito.lower():
                 nueva_t = texto_transcrito.lower().replace("tarea", "").strip()
                 if str_id not in user_data_store:
-                    user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": {}, "recordatorios": [], "frecuentes": [], "notas": []}
+                    user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": {}, "recordatorios": [], "frecuentes": [], "notas": {}}
                 user_data_store[str_id]["tareas"].append(nueva_t)
                 guardar_datos(user_data_store)
                 agregar_google_task(user_id, nueva_t)
@@ -770,64 +840,44 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     text = update.message.text
     hoy_str = ahora_arg.strftime("%Y-%m-%d")
 
-    # Flujo interactivo de creación de recordatorios
-    if user_id in recordatorio_temp_state:
-        state = recordatorio_temp_state[user_id]
-        step = state.get("step")
-        keyboard_menu = [[InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]]
-
-        if step == "texto":
-            state["texto"] = text
-            state["step"] = "frecuencia"
-            keyboard_freq = [
-                [InlineKeyboardButton("🔄 Todos los días", callback_data="freq_type_Todos los días")],
-                [InlineKeyboardButton("📅 Lunes a Viernes", callback_data="freq_type_Lunes a Viernes")],
-                [InlineKeyboardButton("📌 Una sola vez", callback_data="freq_type_Única vez")],
-                [InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]
-            ]
-            await update.message.reply_text("🔄 Seleccioná la frecuencia del recordatorio:", reply_markup=InlineKeyboardMarkup(keyboard_freq))
-            return
-
-        elif step == "hora":
-            state["hora"] = text
-            if str_id not in user_data_store:
-                user_data_store[str_id] = {"recordatorios": [], "frecuentes": []}
-
-            frecuencia = state.get("frecuencia")
-            if frecuencia == "Única vez":
-                if "recordatorios" not in user_data_store[str_id]:
-                    user_data_store[str_id]["recordatorios"] = []
-                user_data_store[str_id]["recordatorios"].append({
-                    "texto": state.get("texto"),
-                    "fecha": hoy_str,
-                    "hora": text
-                })
-            else:
-                if "frecuentes" not in user_data_store[str_id]:
-                    user_data_store[str_id]["frecuentes"] = []
-                user_data_store[str_id]["frecuentes"].append({
-                    "texto": state.get("texto"),
-                    "frecuencia": frecuencia,
-                    "hora": text
-                })
-
-            guardar_datos(user_data_store)
-            del recordatorio_temp_state[user_id]
-
-            await update.message.reply_text(
-                f"✅ **¡Recordatorio Creado con Éxito!**\n\n"
-                f"• {state.get('texto')}\n"
-                f"• Frecuencia: {frecuencia}\n"
-                f"• Hora: {text} hs",
-                parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard_menu)
-            )
-            return
-
+    # Flujo de Notas (Punto 4)
     if user_id in user_input_states:
         estado_input = user_input_states[user_id]
         keyboard = [[InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]]
-        
-        if estado_input == "esperando_accion":
+
+        if estado_input == "esperando_nombre_categoria_nota":
+            del user_input_states[user_id]
+            if str_id not in user_data_store:
+                user_data_store[str_id] = {"notas": {}}
+            if "notas" not in user_data_store[str_id]:
+                user_data_store[str_id]["notas"] = {}
+            
+            if text not in user_data_store[str_id]["notas"]:
+                user_data_store[str_id]["notas"][text] = []
+                guardar_datos(user_data_store)
+            
+            # Guardamos la categoría actual y pedimos el texto de la nota directamente
+            nota_temp_state[user_id] = {"categoria": text}
+            user_input_states[user_id] = "esperando_texto_nota"
+            await update.message.reply_text(f"📁 Categoría '{text}' creada. Ahora escribí el contenido de la nota:", reply_markup=InlineKeyboardMarkup(keyboard))
+            return
+
+        elif estado_input == "esperando_texto_nota":
+            del user_input_states[user_id]
+            cat = nota_temp_state.get(user_id, {}).get("categoria", "General")
+            if str_id not in user_data_store:
+                user_data_store[str_id] = {"notas": {}}
+            if "notas" not in user_data_store[str_id]:
+                user_data_store[str_id]["notas"] = {}
+            if cat not in user_data_store[str_id]["notas"]:
+                user_data_store[str_id]["notas"][cat] = []
+            
+            user_data_store[str_id]["notas"][cat].append(text)
+            guardar_datos(user_data_store)
+            await update.message.reply_text(f"📌 Nota guardada en **{cat}**: *{text}*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+            return
+
+        elif estado_input == "esperando_accion":
             del user_input_states[user_id]
             texto_lower = text.lower()
             if str_id not in user_data_store:
@@ -835,7 +885,7 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             if "acciones" not in user_data_store[str_id]:
                 user_data_store[str_id]["acciones"] = {}
 
-            if "?" in text or "cerre" in texto_lower or "revise" in texto_lower or "tomé" in texto_lower:
+            if "?" in text or "cerre" in texto_lower or "revise" in texto_lower or "tomé" in texto_lower or "puse" in texto_lower:
                 clave_accion = texto_lower.replace("?", "").replace("¿", "").replace("el", "").replace("la", "").strip()
                 encontrada = False
                 hora_reg = ""
@@ -851,6 +901,7 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 else:
                     resp = f"Nooo, no he registrado esa acción hoy; la última vez no figura en el día de hoy."
             else:
+                # Corrección Punto 2: Guardamos el mensaje completo de la acción sin recortes
                 ahora_reg_str = ahora_arg.strftime("%Y-%m-%d %H:%M")
                 user_data_store[str_id]["acciones"][texto_lower] = ahora_reg_str
                 guardar_datos(user_data_store)
@@ -858,6 +909,18 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 resp = f"Siii, registré '{text}' hoy a las {hora_actual} hs. ✅"
 
             await update.message.reply_text(resp, reply_markup=InlineKeyboardMarkup(keyboard))
+            return
+
+        elif estado_input == "esperando_recordatorio":
+            del user_input_states[user_id]
+            recordatorio_temp_state[user_id] = {"texto": text, "step": "frecuencia"}
+            keyboard_freq = [
+                [InlineKeyboardButton("🔄 Todos los días", callback_data="freq_type_Todos los días")],
+                [InlineKeyboardButton("📅 Lunes a Viernes", callback_data="freq_type_Lunes a Viernes")],
+                [InlineKeyboardButton("📌 Una sola vez", callback_data="freq_type_Única vez")],
+                [InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]
+            ]
+            await update.message.reply_text("🔄 Seleccioná la frecuencia del recordatorio:", reply_markup=InlineKeyboardMarkup(keyboard_freq))
             return
 
         elif estado_input == "esperando_hora_semana":
@@ -912,6 +975,59 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 await update.message.reply_text(f"❌ Error al crear la lista: {e}", reply_markup=InlineKeyboardMarkup(keyboard))
             return
 
+    # Flujo de pasos para recordatorios
+    if user_id in recordatorio_temp_state:
+        state = recordatorio_temp_state[user_id]
+        step = state.get("step")
+        keyboard_menu = [[InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]]
+
+        if step == "texto":
+            state["texto"] = text
+            state["step"] = "frecuencia"
+            keyboard_freq = [
+                [InlineKeyboardButton("🔄 Todos los días", callback_data="freq_type_Todos los días")],
+                [InlineKeyboardButton("📅 Lunes a Viernes", callback_data="freq_type_Lunes a Viernes")],
+                [InlineKeyboardButton("📌 Una sola vez", callback_data="freq_type_Única vez")],
+                [InlineKeyboardButton("🏠 Menú Principal", callback_data="menu_principal")]
+            ]
+            await update.message.reply_text("🔄 Seleccioná la frecuencia del recordatorio:", reply_markup=InlineKeyboardMarkup(keyboard_freq))
+            return
+
+        elif step == "hora":
+            state["hora"] = text
+            if str_id not in user_data_store:
+                user_data_store[str_id] = {"recordatorios": [], "frecuentes": []}
+
+            frecuencia = state.get("frecuencia")
+            if frecuencia == "Única vez":
+                if "recordatorios" not in user_data_store[str_id]:
+                    user_data_store[str_id]["recordatorios"] = []
+                user_data_store[str_id]["recordatorios"].append({
+                    "texto": state.get("texto"),
+                    "fecha": hoy_str,
+                    "hora": text
+                })
+            else:
+                if "frecuentes" not in user_data_store[str_id]:
+                    user_data_store[str_id]["frecuentes"] = []
+                user_data_store[str_id]["frecuentes"].append({
+                    "texto": state.get("texto"),
+                    "frecuencia": frecuencia,
+                    "hora": text
+                })
+
+            guardar_datos(user_data_store)
+            del recordatorio_temp_state[user_id]
+
+            await update.message.reply_text(
+                f"✅ **¡Recordatorio Creado con Éxito!**\n\n"
+                f"• {state.get('texto')}\n"
+                f"• Frecuencia: {frecuencia}\n"
+                f"• Hora: {text} hs",
+                parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard_menu)
+            )
+            return
+
     if user_id in reunion_temp_state:
         state = reunion_temp_state[user_id]
         step = state.get("step")
@@ -938,7 +1054,7 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             fecha_formateada = f"{anio}-{mes}-{dia}"
 
             if str_id not in user_data_store:
-                user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": {}, "recordatorios": [], "frecuentes": [], "notas": []}
+                user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": {}, "recordatorios": [], "frecuentes": [], "notas": {}}
             
             reunion_obj = {
                 "titulo": titulo,
@@ -985,7 +1101,7 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.VOICE | filters.TEXT & ~filters.COMMAND, handle_voice_or_text))
 
-    print("🚀 @SoyOrganizabot con sistema de recordatorios interactivos en marcha!")
+    print("🚀 @SoyOrganizabot con notas, categorías y corrección horaria en marcha!")
     app.run_polling()
 
 if __name__ == '__main__':
