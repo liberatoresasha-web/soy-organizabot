@@ -35,9 +35,6 @@ SCOPES = [
 
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 
-# Diccionario temporal en memoria para rastrear estado OAuth
-oauth_pending_states = {}
-
 # --- PERSISTENCIA DE DATOS (JSON) ---
 def cargar_datos():
     if os.path.exists(DATA_FILE):
@@ -82,7 +79,7 @@ class OAuthHandler(BaseHTTPRequestHandler):
 
         if path == "/oauth2callback":
             code = query_params.get("code", [None])[0]
-            state = query_params.get("state", [None])[0] # user_id de Telegram
+            state = query_params.get("state", [None])[0]
 
             if not code or not state:
                 self.send_response(400)
@@ -138,15 +135,18 @@ class OAuthHandler(BaseHTTPRequestHandler):
 
 def run_web_server():
     port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(('0.0.0.0', port), OAuthHandler)
-    server.serve_forever()
+    try:
+        server = HTTPServer(('0.0.0.0', port), OAuthHandler)
+        print(f"Servidor web escuchando en el puerto {port}")
+        server.serve_forever()
+    except Exception as e:
+        print(f"Error crítico en servidor web: {e}")
 
 # --- FUNCIONES DE CALENDAR Y TASKS POR USUARIO ---
 def sincronizar_google_calendar_crear(user_id, titulo, fecha, hora, detalle):
     try:
         creds = obtener_credenciales_usuario(user_id)
         if not creds:
-            print(f"El usuario {user_id} no tiene cuenta de Google vinculada.")
             return False
 
         cal_service = build('calendar', 'v3', credentials=creds)
@@ -160,8 +160,7 @@ def sincronizar_google_calendar_crear(user_id, titulo, fecha, hora, detalle):
             'start': {'dateTime': start_datetime, 'timeZone': 'America/Argentina/Buenos_Aires'},
             'end': {'dateTime': end_datetime, 'timeZone': 'America/Argentina/Buenos_Aires'},
         }
-        event_result = cal_service.events().insert(calendarId='primary', body=event).execute()
-        print(f"Evento creado en Google Calendar del usuario {user_id}: {event_result.get('htmlLink')}")
+        cal_service.events().insert(calendarId='primary', body=event).execute()
         return True
     except Exception as e:
         print(f"Error creando evento en Google Calendar: {e}")
@@ -171,13 +170,11 @@ def agregar_google_task(user_id, titulo_tarea):
     try:
         creds = obtener_credenciales_usuario(user_id)
         if not creds:
-            print(f"El usuario {user_id} no tiene cuenta vinculada para Tasks.")
             return False
 
         tasks_service = build('tasks', 'v1', credentials=creds)
         task = {'title': titulo_tarea}
-        result = tasks_service.tasks().insert(tasklist='@default', body=task).execute()
-        print(f"Tarea agregada a Google Tasks del usuario {user_id}: {result.get('title')}")
+        tasks_service.tasks().insert(tasklist='@default', body=task).execute()
         return True
     except Exception as e:
         print(f"Error agregando tarea a Google Tasks: {e}")
@@ -342,7 +339,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await tareas(update, context)
         return
 
-    # Navegación del asistente de reuniones
     if data in ["reunion_presencial", "reunion_virtual"]:
         tipo = "Presencial" if data == "reunion_presencial" else "Virtual"
         reunion_temp_state[user_id] = {"tipo": tipo, "step": "titulo"}
@@ -413,9 +409,10 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             await voice_file.download_to_drive(audio_path)
 
             with open(audio_path, "rb") as audio:
-                transcript = openai.audio.transcriptions.create(model="whisper-1", file=audio, language="es")
+                # Sintaxis compatible con openai-3.x instalado en Render
+                transcript = openai.Audio.transcribe("whisper-1", audio)
             
-            texto_transcrito = transcript.text
+            texto_transcrito = transcript["text"] if isinstance(transcript, dict) else transcript.text
             if os.path.exists(audio_path):
                 os.remove(audio_path)
 
@@ -442,4 +439,59 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         step = state.get("step")
 
         if step == "titulo":
-            state
+            state["titulo"] = text
+            state["step"] = "anio"
+            keyboard = [
+                [InlineKeyboardButton("2026", callback_data="anio_2026"), InlineKeyboardButton("2027", callback_data="anio_2027")]
+            ]
+            await update.message.reply_text("📅 Seleccioná el año:", reply_markup=InlineKeyboardMarkup(keyboard))
+            return
+
+        elif step == "lugar_link":
+            ubicacion_o_link = text
+            tipo = state.get("tipo")
+            titulo = state.get("titulo")
+            anio = state.get("anio")
+            mes = state.get("mes")
+            dia = state.get("dia")
+            hora = state.get("hora")
+            fecha_formateada = f"{anio}-{mes}-{dia}"
+
+            if str_id not in user_data_store:
+                user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "notas": []}
+            
+            detalle = f"[{tipo}] {titulo} | {fecha_formateada} | {hora} | {ubicacion_o_link}"
+            user_data_store[str_id]["reuniones"].append(detalle)
+            guardar_datos(user_data_store)
+
+            sincronizar_google_calendar_crear(user_id, titulo, fecha_formateada, hora, ubicacion_o_link)
+            del reunion_temp_state[user_id]
+
+            await update.message.reply_text(
+                f"✅ ¡Reunión agendada en **tu Google Calendar** personal!\n\n"
+                f"📌 {titulo}\n📅 {fecha_formateada} a las {hora} hs\n📍 {ubicacion_o_link}"
+            )
+            return
+
+def main():
+    web_thread = threading.Thread(target=run_web_server, daemon=True)
+    web_thread.start()
+
+    app = ApplicationBuilder().token(TOKEN).build()
+    
+    app.add_handler(CommandHandler(["start", "iniciar"], iniciar))
+    app.add_handler(CommandHandler("conectar", conectar_google))
+    app.add_handler(CommandHandler(["agenda_reunion", "reuniones"], agenda_reunion))
+    app.add_handler(CommandHandler("tareas", tareas))
+    app.add_handler(CommandHandler("nueva_tarea", nueva_tarea))
+    app.add_handler(CommandHandler("nota", nota_cmd))
+    app.add_handler(CommandHandler("lista_notas", lista_notas))
+    
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.VOICE | filters.TEXT & ~filters.COMMAND, handle_voice_or_text))
+
+    print("🚀 @SoyOrganizabot con OAuth individual por usuario en marcha!")
+    app.run_polling()
+
+if __name__ == '__main__':
+    main()
