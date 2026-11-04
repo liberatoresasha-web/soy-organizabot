@@ -116,7 +116,7 @@ async def configuracion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id not in user_data_store:
         user_data_store[user_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "hora_semana": "08:00", "hora_fin_de_semana": "10:00"}
 
-    reunion_temp_state[user_id] = {"cfg_tipo": "sem", "step": "cfg_hora"}
+    reunion_temp_state[user_id] = {"cfg_tipo": "sem"}
     
     horas_buttons = []
     fila = []
@@ -310,7 +310,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     chat_id = query.message.chat_id
 
-    # Menú principal mediante botones personalizados
+    # Menú principal mediante botones personalizados con los nombres exactos pedidos
     if data == "menu_agenda":
         await agenda_reunion(update, context)
         return
@@ -327,7 +327,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await configuracion(update, context)
         return
 
-    # Flujo secuencial de configuración de reporte matutino
+    # Selección de Hora (Horario Semanal o Fin de Semana)
     if data.startswith("cfg_h_"):
         h_str = data.replace("cfg_h_", "")
         if user_id not in reunion_temp_state:
@@ -342,9 +342,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"⚙️ Hora seleccionada: {h_str} hs. Ahora seleccioná los minutos:", reply_markup=InlineKeyboardMarkup(min_buttons))
         return
 
+    # Selección de Minutos (Maneja inteligentemente si es Semanal o Fin de Semana)
     elif data.startswith("cfg_m_"):
         m_str = data.replace("cfg_m_", "")
-        state = reunion_temp_state.get(user_id, {})
+        if user_id not in reunion_temp_state:
+            reunion_temp_state[user_id] = {"cfg_tipo": "sem"}
+        
+        state = reunion_temp_state[user_id]
         tipo_cfg = state.get("cfg_tipo", "sem")
         h_str = state.get("cfg_h", "08")
         nueva_hora = f"{h_str}:{m_str}"
@@ -354,6 +358,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if tipo_cfg == "sem":
             user_data_store[user_id]["hora_semana"] = nueva_hora
+            # Cambiar estado a fin de semana para el próximo paso
             reunion_temp_state[user_id]["cfg_tipo"] = "fin"
             
             horas_buttons = []
@@ -388,7 +393,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     chat_id=chat_id, user_id=user_id, name=j_name
                 )
 
-            # Menú principal con los 4 botones exactos pedidos por el usuario
+            # Menú principal con los nombres exactos y limpios pedidos por el usuario
             menu_keyboard = [
                 [InlineKeyboardButton("Acciones", callback_data="menu_acciones"),
                  InlineKeyboardButton("Tareas", callback_data="menu_tareas")],
@@ -400,7 +405,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "🎉 ¡Configuración completada con éxito!\n\n"
                 f"• Horario Semanal: {h_sem_str} hs\n"
                 f"• Horario Fin de Semana: {h_fin_str} hs\n\n"
-                "Ya podés utilizar las opciones del bot:"
+                "Ya podés utilizar el bot con las siguientes opciones:"
             )
             await query.edit_message_text(resumen_texto, reply_markup=InlineKeyboardMarkup(menu_keyboard))
             return
