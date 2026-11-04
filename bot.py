@@ -7,6 +7,7 @@ import threading
 import datetime
 import urllib.request
 import json
+import openai
 
 # Configurar logs
 logging.basicConfig(
@@ -16,6 +17,9 @@ logging.basicConfig(
 
 TOKEN = "9006959123:AAGwA8wE4vhFi8-tv0bUvFAnnLnfyi2ZCXQ"
 DATA_FILE = "data.json"
+
+# Configurar OpenAI para la transcripción de audios
+openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 # --- PERSISTENCIA DE DATOS (JSON) ---
 def cargar_datos():
@@ -34,7 +38,6 @@ def guardar_datos(data):
     except Exception as e:
         print(f"Error al escribir {DATA_FILE}: {e}")
 
-# Cargar al iniciar
 user_data_store = cargar_datos()
 reunion_temp_state = {}
 
@@ -66,16 +69,11 @@ def obtener_clima_villa_regina():
         print(f"Error al obtener clima: {e}")
         return "Clima no disponible por el momento"
 
-# --- INTEGRACIÓN GOOGLE CALENDAR (ESTRUCTURA DE CONEXIÓN) ---
 def sincronizar_google_calendar_crear(titulo, fecha, hora, detalle):
-    # TODO: Aquí se conectará la API oficial de Google Calendar usando Service Account o OAuth2.
-    # Por ahora simula la sincronización automática y persistencia local.
     print(f"[Google Calendar SYNC] Creando evento: {titulo} el {fecha} a las {hora} hs ({detalle})")
 
 def sincronizar_google_calendar_eliminar(detalle):
-    # TODO: Aquí se conectará la API oficial de Google Calendar para borrar el evento asociado.
     print(f"[Google Calendar SYNC] Eliminando evento: {detalle}")
-
 
 # --- COMANDOS PRINCIPALES ---
 
@@ -103,7 +101,7 @@ async def iniciar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"¡Hola, {user.first_name}! 🤖 Bienvenido a @SoyOrganizabot.\n\n"
         "Estoy listo para ayudarte y comenzar a organizar tu día. Esta es la lista de comandos disponibles:\n\n"
         "• /configuracion - Configurar horarios para el reporte matutino\n"
-        "• /agenda_reunion - Asistente interactivo para agendar reuniones (Sincronizado con Google Calendar)\n"
+        "• /agenda_reunion - Asistente interactivo para agendar reuniones (Google Calendar)\n"
         "• /reuniones - Ver listado de reuniones agendadas\n"
         "• /tareas - Ver listado de pendientes actuales\n"
         "• /nueva_tarea - Agregar una tarea nueva\n"
@@ -117,10 +115,6 @@ async def iniciar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def configuracion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    str_id = str(user_id)
-    if str_id not in user_data_store:
-        user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "notas": [], "hora_semana": "08:00", "hora_fin_de_semana": "10:00"}
-
     reunion_temp_state[user_id] = {"step": "cfg_sem_hora"}
     
     horas_buttons = []
@@ -269,42 +263,6 @@ async def lista_notas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(texto)
 
-async def lista_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    str_id = str(user_id)
-    if len(context.args) < 2:
-        await update.message.reply_text("⚠️ Formato: /lista [categoría] [texto]\nEjemplo: /lista supermercado Pan y leche")
-        return
-    
-    categoria = context.args[0].lower()
-    item = " ".join(context.args[1:])
-
-    if str_id not in user_data_store:
-        user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "notas": []}
-    
-    if categoria not in user_data_store[str_id]["listas"]:
-        user_data_store[str_id]["listas"][categoria] = []
-    
-    user_data_store[str_id]["listas"][categoria].append(item)
-    guardar_datos(user_data_store)
-    await update.message.reply_text(f"📌 Agregado a la lista {categoria.upper()}: {item}")
-
-async def ver_listas(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    str_id = str(user_id)
-    if str_id not in user_data_store or not user_data_store[str_id].get("listas"):
-        texto = "📂 No tenés listas guardadas."
-    else:
-        listas = user_data_store[str_id]["listas"]
-        texto = "📂 Tus Listas:\n"
-        for cat, items in listas.items():
-            texto += f"\n🏷 {cat.upper()}\n" + "".join([f"  • {i}\n" for i in items])
-    
-    if update.callback_query:
-        await update.callback_query.edit_message_text(texto)
-    else:
-        await update.message.reply_text(texto)
-
 async def tareas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     str_id = str(user_id)
@@ -335,7 +293,7 @@ async def nueva_tarea(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def completada(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Seleccioná o indicá la tarea finalizada.")
 
-# --- MANEJADOR DE BOTONES Y PASOS INTERACTIVOS ---
+# --- MANEJADOR DE BOTONES ---
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -366,7 +324,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         reuniones = user_data_store[str_id]["reuniones"]
-        texto = "🗑 **Seleccioná el número de la reunión que querés eliminar (se borrará también de Google Calendar):**\n\n"
+        texto = "🗑 **Seleccioná el número de la reunión que querés eliminar:**\n\n"
         for idx, r in enumerate(reuniones, 1):
             texto += f"{idx}. {r}\n"
         texto += "\n*(Escribí el número correspondiente por el chat)*"
@@ -555,23 +513,57 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(prompt_texto)
         return
 
-    elif data == "ver_resumen_acciones":
-        str_id = str(user_id)
-        acciones = user_data_store.get(str_id, {}).get("acciones", [])
-        if not acciones:
-            await query.edit_message_text("📋 No hay acciones registradas hoy.")
-            return
-        resumen_str = "\n".join([f"• {a['accion']} (a las {a['hora']})" for a in acciones])
-        await query.edit_message_text(f"📋 Resumen de tus acciones de hoy:\n\n{resumen_str}")
-    elif data == "no_resumen":
-        await query.edit_message_text("👍 ¡Entendido!")
-
+# --- MANEJADOR DE TEXTO Y AUDIOS TRANSCRITOS (WHISPER) ---
 async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     str_id = str(user_id)
-    
+
+    # 1. SI ES UNA NOTA DE VOZ, TRANSCRIBIRLA CON OPENAI WHISPER
     if update.message.voice:
-        await update.message.reply_text("🎤 ¡Recibí tu nota de voz! Ya quedó guardada para procesarla próximamente.")
+        try:
+            voice_file = await context.bot.get_file(update.message.voice.file_id)
+            audio_path = f"voice_{user_id}.ogg"
+            await voice_file.download_to_drive(audio_path)
+
+            with open(audio_path, "rb") as audio:
+                transcript = openai.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio,
+                    language="es"
+                )
+            
+            texto_transcrito = transcript.text
+            
+            if os.path.exists(audio_path):
+                os.remove(audio_path)
+
+            await update.message.reply_text(f"🎤 *Transcripción:* \"{texto_transcrito}\"", parse_mode="Markdown")
+
+            texto_lower = texto_transcrito.lower()
+            
+            if "tarea" in texto_lower:
+                nueva_t = texto_transcrito.replace("tarea", "").strip()
+                if str_id not in user_data_store:
+                    user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "notas": []}
+                user_data_store[str_id]["tareas"].append(nueva_t)
+                guardar_datos(user_data_store)
+                await update.message.reply_text(f"➕ Tarea agregada por voz: *{nueva_t}*", parse_mode="Markdown")
+            
+            elif "nota" in texto_lower:
+                nueva_n = texto_transcrito.replace("nota", "").strip()
+                if str_id not in user_data_store:
+                    user_data_store[str_id] = {"tareas": [], "listas": {}, "reuniones": [], "acciones": [], "notas": []}
+                if "notas" not in user_data_store[str_id]:
+                    user_data_store[str_id]["notas"] = []
+                user_data_store[str_id]["notas"].append(nueva_n)
+                guardar_datos(user_data_store)
+                await update.message.reply_text(f"📌 Nota guardada por voz: *{nueva_n}*", parse_mode="Markdown")
+            else:
+                await update.message.reply_text("🤖 Entendí tu audio, pero decime si querés guardarlo como *tarea* o *nota*.")
+
+        except Exception as e:
+            print(f"Error procesando audio con Whisper: {e}")
+            await update.message.reply_text("❌ Hubo un error al procesar tu nota de voz con la IA.")
         return
 
     text = update.message.text
@@ -587,7 +579,7 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                     sincronizar_google_calendar_eliminar(eliminada)
                     del reunion_temp_state[user_id]
                     
-                    texto = f"🗑 **Reunión eliminada con éxito y sincronizada en Google Calendar:**\n{eliminada}\n\n"
+                    texto = f"🗑 **Reunión eliminada con éxito:**\n{eliminada}\n\n"
                     if not reuniones:
                         texto += "📅 Ya no te quedan reuniones agendadas."
                         reply_markup = None
@@ -643,9 +635,7 @@ async def handle_voice_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             user_data_store[str_id]["reuniones"].append(detalle)
             guardar_datos(user_data_store)
 
-            # Sincronización automática con Google Calendar
             sincronizar_google_calendar_crear(titulo, fecha_formateada, hora, ubicacion_o_link)
-
             del reunion_temp_state[user_id]
 
             await update.message.reply_text(
@@ -677,7 +667,7 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.VOICE | filters.TEXT & ~filters.COMMAND, handle_voice_or_text))
 
-    print("🚀 ¡@SoyOrganizabot listo, persistente y sincronizado con Google Calendar!")
+    print("🚀 ¡@SoyOrganizabot con Whisper, Persistencia y Calendar listo!")
     app.run_polling()
 
 if __name__ == '__main__':
